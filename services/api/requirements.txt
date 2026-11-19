@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlmodel>=0.0.22
+pydantic>=2.7
+pydantic-settings>=2.3
+python-multipart>=0.0.9
+numpy>=1.26
+scipy>=1.13
+librosa>=0.10.2
+soundfile>=0.12
+pyloudnorm>=0.1.1
