@@ -1,14 +1,15 @@
 import clsx from "clsx";
-import { AlertTriangle, Library, Pause, Play, RotateCw, Search, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Folder, Library, Pause, Play, Plus, RotateCw, Search, Sparkles, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Empty, ErrorNote, Modal, PageHeader, Panel, Spinner, Tabs } from "@/components/ui";
-import { api, qk, useAssets, useInvalidateDerived } from "@/services/api";
+import { api, qk, useAssets, useInvalidateDerived, useMusicFolders } from "@/services/api";
 import { fmtTime, STAGE_FI } from "@/services/format";
 import { usePlayer } from "@/stores/player";
 import type { Asset, UploadResult } from "@/types/api";
 import { UploadResults, Uploader } from "./Uploader";
+import { ForYouCard } from "./ForYouCard";
 
 const SOURCE_FI: Record<string, string> = {
   elevenlabs: "ElevenLabs-tulos",
@@ -57,11 +58,44 @@ export default function LibraryPage() {
   const assets = useAssets();
   const qc = useQueryClient();
   const inv = useInvalidateDerived();
+  const folders = useMusicFolders();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const folderParam = params.get("folder");
+  const selectedFolderId = folderParam && /^\d+$/.test(folderParam) ? Number(folderParam) : null;
+  const selectedFolder = folders.data?.find((f) => f.id === selectedFolderId);
+  const [folderFormOpen, setFolderFormOpen] = useState(false);
+  const [folderName, setFolderName] = useState("");
   const [filter, setFilter] = useState<"all" | "library" | "generated" | "unrated">("all");
   const [q, setQ] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Asset | null>(null);
   const [lastResults, setLastResults] = useState<UploadResult[] | null>(null);
+
+  const createFolder = useMutation({
+    mutationFn: api.createMusicFolder,
+    onSuccess: (f) => {
+      qc.invalidateQueries({ queryKey: qk.musicFolders });
+      setFolderFormOpen(false);
+      setFolderName("");
+      setParams({ folder: String(f.id) });
+    },
+  });
+  const assignFolder = useMutation({
+    mutationFn: ({ id, folderId }: { id: number; folderId: number | null }) => api.patchAsset(id, { folder_id: folderId }),
+    onSuccess: (a) => {
+      inv();
+      qc.invalidateQueries({ queryKey: qk.asset(a.id) });
+    },
+  });
+  const generate = useMutation({
+    mutationFn: api.folderPrompt,
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: qk.prompts });
+      qc.invalidateQueries({ queryKey: qk.overview });
+      navigate(`/prompt-studio?batch=${r.batch_id}&quick=1`);
+    },
+  });
 
   const del = useMutation({
     mutationFn: (id: number) => api.deleteAsset(id),
@@ -71,10 +105,12 @@ export default function LibraryPage() {
       setConfirmDel(null);
     },
   });
-  const retry = useMutation({ mutationFn: (id: number) => api.reanalyze(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.assets }) });
+  const retry = useMutation({ mutationFn: (id: number) => api.reanalyze(id), onSuccess: inv });
 
   const list = useMemo(() => {
     let l = assets.data ?? [];
+    if (folderParam === "none") l = l.filter((a) => a.folder_id === null);
+    else if (selectedFolderId !== null) l = l.filter((a) => a.folder_id === selectedFolderId);
     if (filter === "library") l = l.filter((a) => a.origin === "library");
     if (filter === "generated") l = l.filter((a) => a.origin === "generated");
     if (filter === "unrated") l = l.filter((a) => a.status === "completed" && !a.rated);
@@ -83,33 +119,66 @@ export default function LibraryPage() {
       l = l.filter((a) => `${a.title} ${a.artist} ${a.original_filename}`.toLowerCase().includes(s));
     }
     return l;
-  }, [assets.data, filter, q]);
+  }, [assets.data, filter, q, folderParam, selectedFolderId]);
 
   const total = assets.data?.length ?? 0;
+  const folderTotal = (assets.data ?? []).filter((a) => folderParam === "none" ? a.folder_id === null : selectedFolderId === null || a.folder_id === selectedFolderId).length;
 
   return (
     <div>
       <PageHeader
         eyebrow="Kirjasto"
         icon={<Library className="size-3.5" />}
-        title="Kirjasto"
-        description="Kaikki tuodut kappaleet ja Sunolla luodut tulokset. Tuo myös musiikkia, joka ei vaikuta sinuun – vertailu tarvitsee molempia."
+        title="Sinun musiikkisi"
+        description="Omat tyylit, omat suosikit. Lisää musiikkia lokeroon ja tee siitä oman makusi mukainen Suno-kehote."
         actions={
           <Button variant="primary" onClick={() => setUploadOpen(true)}>
-            Tuo musiikkia
+            <Upload className="size-4" /> Tuo musiikkia
           </Button>
         }
       />
 
+      <div className="mb-7"><ForYouCard /></div>
+      <section className="mb-7" aria-label="Tyylilokerot">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Tyylilokerosi</h2>
+          <Button size="sm" onClick={() => { createFolder.reset(); setFolderFormOpen(true); }}><Plus className="size-4" /> Uusi lokero</Button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {folders.data?.map((f) => <article key={f.id} className={clsx("flex min-w-0 flex-col rounded-xl border bg-midnight p-5", selectedFolderId === f.id ? "border-violet" : "border-line-strong")}>
+            <button type="button" aria-pressed={selectedFolderId === f.id} onClick={() => { setParams({ folder: String(f.id) }); setFilter("all"); setQ(""); }} className="flex min-w-0 items-center gap-3 text-left">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-violet-soft"><Folder className="size-5" /></span>
+              <span className="min-w-0"><span className="block break-words text-lg font-medium">{f.name}</span><span className="text-sm text-muted">{f.track_count} kappaletta</span></span>
+            </button>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button size="sm" variant="primary" disabled={!f.ready_count || generate.isPending} loading={generate.isPending && generate.variables === f.id} onClick={() => generate.mutate(f.id)}>Luo Suno-kehote <ArrowRight className="size-3.5" /></Button>
+              <Button size="sm" variant="ghost" onClick={() => { setParams({ folder: String(f.id) }); setUploadOpen(true); }}><Plus className="size-3.5" /> Lisää musiikkia</Button>
+            </div>
+            {!f.ready_count ? <p className="mt-3 text-xs text-muted">{f.track_count ? "Kehotteen voi luoda, kun analyysi on valmis." : "Lisää tähän tyyliin kuuluvaa musiikkia."}</p> : null}
+          </article>)}
+        </div>
+        {folders.isLoading ? <Spinner label="Ladataan lokeroita…" /> : null}
+        <ErrorNote error={folders.error} />
+        <ErrorNote error={generate.error} />
+      </section>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">{selectedFolder?.name ?? (folderParam === "none" ? "Ilman lokeroa" : "Kaikki kappaleet")}</h2>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={folderParam === null ? "secondary" : "ghost"} onClick={() => setParams({})}>Kaikki kappaleet</Button>
+          <Button size="sm" variant={folderParam === "none" ? "secondary" : "ghost"} onClick={() => { setParams({ folder: "none" }); setFilter("all"); }}>Ilman lokeroa</Button>
+        </div>
+      </div>
+      <ErrorNote error={assignFolder.error} />
+      <ErrorNote error={assets.error} />
       {assets.isLoading ? (
         <Spinner />
-      ) : total === 0 ? (
+      ) : total === 0 && !assets.error ? (
         <Panel>
           <div className="mx-auto max-w-xl py-4">
             <Empty title="Kirjasto on tyhjä" icon={<Sparkles className="size-7" />}>
-              Aloita tuomalla muutama kappale. SonicDNA analysoi niiden rytmin, spektrin, harmonian, dynamiikan ja rakenteen paikallisesti.
+              Valitse tyylilokero ja lisää ensimmäinen kappale. Voit kuunnella sitä jo analyysin aikana.
             </Empty>
-            <Uploader onDone={setLastResults} />
+            <Uploader key={selectedFolderId ?? "all"} folderId={selectedFolderId ?? undefined} onDone={setLastResults} />
           </div>
         </Panel>
       ) : (
@@ -125,7 +194,7 @@ export default function LibraryPage() {
               value={filter}
               onChange={setFilter}
               tabs={[
-                { key: "all", label: `Kaikki ${total}` },
+                { key: "all", label: `Kaikki ${folderTotal}` },
                 { key: "library", label: "Kirjasto" },
                 { key: "generated", label: "Generoidut" },
                 { key: "unrated", label: "Arvioimatta" },
@@ -138,9 +207,9 @@ export default function LibraryPage() {
           </div>
           <ul className="divide-y divide-line">
             {list.map((a) => (
-              <li key={a.id} className="flex items-center gap-3 px-4 py-3 hover:bg-surface/30">
+              <li key={a.id} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-surface/30 sm:flex-nowrap">
                 <PlayButton a={a} />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-24 flex-1">
                   <Link to={`/tracks/${a.id}`} className="block truncate text-sm font-medium text-ink hover:text-violet-soft">
                     {a.title || a.original_filename}
                   </Link>
@@ -153,6 +222,13 @@ export default function LibraryPage() {
                   </div>
                   {a.status === "failed" && <div className="mt-1 flex items-center gap-1 text-xs text-danger"><AlertTriangle className="size-3" />{a.error}</div>}
                 </div>
+                <label className="min-w-0 max-w-36 shrink-0 text-xs text-muted">
+                  <span className="sr-only">Tyylilokero: {a.title || a.original_filename}</span>
+                  <select aria-label={`Tyylilokero: ${a.title || a.original_filename}`} value={a.folder_id ?? ""} disabled={assignFolder.isPending} onChange={(e) => assignFolder.mutate({ id: a.id, folderId: e.target.value ? Number(e.target.value) : null })} className="min-h-10 w-full max-w-36 rounded-lg border border-line bg-midnight px-2 text-sm text-ink">
+                    <option value="">Ilman lokeroa</option>
+                    {folders.data?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </label>
                 <div className="hidden sm:block">
                   <StatusPill a={a} />
                 </div>
@@ -168,14 +244,22 @@ export default function LibraryPage() {
                 </div>
               </li>
             ))}
-            {list.length === 0 && <li className="px-4 py-8 text-center text-sm text-muted">Ei hakua vastaavia kappaleita.</li>}
+            {list.length === 0 && <li className="flex flex-col items-center gap-3 px-4 py-8 text-center text-sm text-muted">{selectedFolder ? "Tässä lokerossa ei ole valintoja vastaavia kappaleita." : "Ei hakua vastaavia kappaleita."}<Button size="sm" onClick={() => setUploadOpen(true)}>Lisää musiikkia</Button></li>}
           </ul>
         </Panel>
         </>
       )}
 
       <Modal open={uploadOpen} onClose={() => setUploadOpen(false)} title="Tuo musiikkia">
-        <Uploader onDone={setLastResults} />
+        <Uploader key={selectedFolderId ?? "all"} folderId={selectedFolderId ?? undefined} onDone={setLastResults} />
+      </Modal>
+      <Modal open={folderFormOpen} onClose={() => setFolderFormOpen(false)} title="Uusi tyylilokero">
+        <form onSubmit={(e) => { e.preventDefault(); if (folderName.trim()) createFolder.mutate(folderName.trim()); }} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-2 text-sm">Tyylilajin nimi<input autoFocus maxLength={60} required value={folderName} onChange={(e) => setFolderName(e.target.value)} placeholder="Esim. jazz, folk tai progressiivinen metalli" className="h-11 w-full rounded-lg border border-line-strong bg-obsidian px-3" /></label>
+          <p className="text-sm text-muted">Nimeä lokero tyylilajin mukaan. Sama tyyli ohjaa siitä luotavia Suno-kehotteita.</p>
+          <Button type="submit" variant="primary" loading={createFolder.isPending} disabled={!folderName.trim()}>Luo lokero</Button>
+          <ErrorNote error={createFolder.error} />
+        </form>
       </Modal>
       <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Poista kappale">
         <p className="text-sm text-muted">

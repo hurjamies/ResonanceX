@@ -7,6 +7,8 @@ import type {
   GenerationJob,
   Handoff,
   Marker,
+  MusicFolder,
+  MusicSuggestion,
   Overview,
   Profile,
   PromptOptions,
@@ -53,14 +55,20 @@ export const api = {
   vocabulary: () => request<Vocabulary>("/api/vocabulary"),
   assets: (params: { origin?: string } = {}) => request<Asset[]>(`/api/assets${params.origin ? `?origin=${params.origin}` : ""}`),
   asset: (id: number) => request<Asset>(`/api/assets/${id}`),
-  patchAsset: (id: number, body: Partial<Pick<Asset, "title" | "artist" | "genre_tag">>) => request<Asset>(`/api/assets/${id}`, { method: "PATCH", body: json(body) }),
+  patchAsset: (id: number, body: Partial<Pick<Asset, "title" | "artist" | "genre_tag" | "folder_id">>) => request<Asset>(`/api/assets/${id}`, { method: "PATCH", body: json(body) }),
+  musicFolders: () => request<MusicFolder[]>("/api/music/folders"),
+  createMusicFolder: (name: string) => request<MusicFolder>("/api/music/folders", { method: "POST", body: json({ name }) }),
+  folderPrompt: (id: number) => request<{ batch_id: string; prompt: PromptRecord }>(`/api/music/folders/${id}/prompt`, { method: "POST" }),
+  musicSuggestion: () => request<MusicSuggestion>("/api/music/suggestion"),
+  suggestionPrompt: () => request<{ batch_id: string; prompt: PromptRecord }>("/api/music/suggestion/prompt", { method: "POST" }),
   deleteAsset: (id: number) => request<{ deleted: number }>(`/api/assets/${id}`, { method: "DELETE" }),
   reanalyze: (id: number) => request<{ queued: boolean }>(`/api/assets/${id}/reanalyze`, { method: "POST" }),
-  upload: (files: File[], opts: { rights: boolean; promptId?: number }) => {
+  upload: (files: File[], opts: { rights: boolean; promptId?: number; folderId?: number }) => {
     const fd = new FormData();
     files.forEach((f) => fd.append("files", f));
     fd.append("rights_confirmed", String(opts.rights));
     if (opts.promptId) fd.append("prompt_id", String(opts.promptId));
+    if (opts.folderId) fd.append("folder_id", String(opts.folderId));
     return request<{ results: UploadResult[] }>("/api/assets/upload", { method: "POST", body: fd });
   },
   analysis: (id: number) => request<Analysis>(`/api/assets/${id}/analysis`),
@@ -81,7 +89,7 @@ export const api = {
   promptOptions: () => request<PromptOptions>("/api/prompt-options"),
   generatePrompts: (body: { source_asset_ids: number[]; objective: string | null; controls: Record<string, unknown> }) =>
     request<{ batch_id: string; profile_version: number; prompts: PromptRecord[] }>("/api/prompts/generate", { method: "POST", body: json(body) }),
-  prompts: () => request<PromptRecord[]>("/api/prompts"),
+  prompts: (batchId?: string) => request<PromptRecord[]>(`/api/prompts${batchId ? `?batch_id=${encodeURIComponent(batchId)}` : ""}`),
   prompt: (id: number) => request<PromptRecord>(`/api/prompts/${id}`),
   patchPrompt: (id: number, body: { edited?: Record<string, unknown>; saved?: boolean; notes?: string }) => request<PromptRecord>(`/api/prompts/${id}`, { method: "PATCH", body: json(body) }),
   duplicatePrompt: (id: number) => request<PromptRecord>(`/api/prompts/${id}/duplicate`, { method: "POST" }),
@@ -105,6 +113,8 @@ export const api = {
 export const qk = {
   vocab: ["vocabulary"],
   assets: ["assets"],
+  musicFolders: ["music-folders"],
+  musicSuggestion: ["music-suggestion"],
   asset: (id: number) => ["asset", id],
   analysis: (id: number) => ["analysis", id],
   ts: (id: number) => ["timeseries", id],
@@ -136,6 +146,10 @@ export function useAssets() {
   });
 }
 
+export function useMusicFolders() {
+  return useQuery({ queryKey: qk.musicFolders, queryFn: api.musicFolders, refetchInterval: (q) => q.state.data?.some((f) => f.pending_count > 0) ? 2000 : false });
+}
+
 export function useAsset(id: number) {
   return useQuery({
     queryKey: qk.asset(id),
@@ -156,6 +170,8 @@ export function useInvalidateDerived() {
     qc.invalidateQueries({ queryKey: qk.overview });
     qc.invalidateQueries({ queryKey: qk.experiments });
     qc.invalidateQueries({ queryKey: qk.assets });
+    qc.invalidateQueries({ queryKey: qk.musicFolders });
+    qc.invalidateQueries({ queryKey: qk.musicSuggestion });
   };
 }
 
@@ -163,7 +179,7 @@ export function useUpload() {
   const qc = useQueryClient();
   const inv = useInvalidateDerived();
   return useMutation({
-    mutationFn: ({ files, rights, promptId }: { files: File[]; rights: boolean; promptId?: number }) => api.upload(files, { rights, promptId }),
+    mutationFn: ({ files, rights, promptId, folderId }: { files: File[]; rights: boolean; promptId?: number; folderId?: number }) => api.upload(files, { rights, promptId, folderId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.assets });
       qc.invalidateQueries({ queryKey: qk.prompts });

@@ -2,13 +2,15 @@ import clsx from "clsx";
 import { CheckCircle2, CircleAlert, Copy, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button, ErrorNote } from "@/components/ui";
-import { useUpload, useVocabulary } from "@/services/api";
+import { useMusicFolders, useUpload, useVocabulary } from "@/services/api";
 import type { UploadResult } from "@/types/api";
 
 /** Batch audio upload with explicit rights confirmation. */
-export function Uploader({ promptId, compact, onDone }: { promptId?: number; compact?: boolean; onDone?: (r: UploadResult[]) => void }) {
+export function Uploader({ promptId, folderId, compact, onDone }: { promptId?: number; folderId?: number; compact?: boolean; onDone?: (r: UploadResult[]) => void }) {
   const vocab = useVocabulary();
   const upload = useUpload();
+  const folders = useMusicFolders();
+  const [selectedFolder, setSelectedFolder] = useState(folderId ? String(folderId) : "");
   const [files, setFiles] = useState<File[]>([]);
   const [rights, setRights] = useState(false);
   const [drag, setDrag] = useState(false);
@@ -23,7 +25,12 @@ export function Uploader({ promptId, compact, onDone }: { promptId?: number; com
   };
 
   const submit = async () => {
-    const res = await upload.mutateAsync({ files, rights, promptId });
+    let res;
+    try {
+      res = await upload.mutateAsync({ files, rights, promptId, folderId: selectedFolder ? Number(selectedFolder) : undefined });
+    } catch {
+      return; // ErrorNote displays the request error; keep selected files for retry.
+    }
     setResults(res.results);
     setFiles([]);
     onDone?.(res.results);
@@ -31,6 +38,14 @@ export function Uploader({ promptId, compact, onDone }: { promptId?: number; com
 
   return (
     <div className="flex flex-col gap-4">
+      <label className="flex flex-col gap-2 text-sm">
+        Tyylilokero
+        <select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)} disabled={upload.isPending} className="h-11 w-full rounded-lg border border-line-strong bg-midnight px-3 text-ink">
+          <option value="">Ilman lokeroa</option>
+          {folders.data?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+      </label>
+      <ErrorNote error={folders.error} />
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -40,7 +55,7 @@ export function Uploader({ promptId, compact, onDone }: { promptId?: number; com
         onDrop={(e) => {
           e.preventDefault();
           setDrag(false);
-          add(e.dataTransfer.files);
+          if (!upload.isPending) add(e.dataTransfer.files);
         }}
         className={clsx(
           "relative flex flex-col items-center justify-center rounded-xl border border-dashed text-center transition-colors",
@@ -51,7 +66,7 @@ export function Uploader({ promptId, compact, onDone }: { promptId?: number; com
         <Upload className="mb-3 size-6 text-violet-soft" />
         <p className="text-sm text-ink">{promptId ? "Pudota Sunosta ladattu kappale tähän" : "Pudota äänitiedostoja tähän"}</p>
         <p className="mt-1 text-xs text-muted">MP3, WAV, FLAC, M4A, OGG, AIFF · {promptId ? "1 tiedosto" : "useita kerralla"}</p>
-        <Button size="sm" className="mt-4" onClick={() => input.current?.click()}>
+        <Button size="sm" className="mt-4" disabled={upload.isPending} onClick={() => input.current?.click()}>
           Valitse tiedostot
         </Button>
         <input ref={input} type="file" multiple={!promptId} accept={accept} className="sr-only" onChange={(e) => add(e.target.files)} aria-label="Valitse äänitiedostot" />
@@ -81,7 +96,7 @@ export function Uploader({ promptId, compact, onDone }: { promptId?: number; com
           {promptId ? "Tuo ja analysoi tulos" : `Tuo ${files.length || ""} ja analysoi`}
         </Button>
         {files.length > 0 && (
-          <Button variant="ghost" onClick={() => setFiles([])}>
+          <Button variant="ghost" disabled={upload.isPending} onClick={() => setFiles([])}>
             Tyhjennä
           </Button>
         )}

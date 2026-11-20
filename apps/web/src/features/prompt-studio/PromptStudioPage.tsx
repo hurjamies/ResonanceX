@@ -2,12 +2,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import clsx from "clsx";
 import { Search, Sparkles, Wand2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button, Chip, Empty, ErrorNote, EvidenceBadge, PageHeader, Panel, Spinner, Tabs } from "@/components/ui";
 import { PromptIcon } from "@/design-system/brand";
 import { api, qk, useAssets, useProfile } from "@/services/api";
 import { fmtDate } from "@/services/format";
 import type { PromptRecord } from "@/types/api";
 import { PromptCard } from "./PromptCard";
+import { QuickPromptCard } from "./QuickPromptCard";
 
 type Controls = {
   genre: string;
@@ -79,15 +81,17 @@ function OptSlider({ label, value, onChange, hint }: { label: string; value: num
 }
 
 export default function PromptStudioPage() {
+  const [search, setSearch] = useSearchParams();
+  const batch = search.get("batch");
   const assets = useAssets();
   const profile = useProfile();
   const options = useQuery({ queryKey: ["prompt-options"], queryFn: api.promptOptions, staleTime: Infinity });
-  const history = useQuery({ queryKey: qk.prompts, queryFn: api.prompts });
+  const history = useQuery({ queryKey: qk.prompts, queryFn: () => api.prompts() });
+  const batchQuery = useQuery({ queryKey: [...qk.prompts, "batch", batch], queryFn: () => api.prompts(batch!), enabled: Boolean(batch) });
   const [sources, setSources] = useState<number[]>([]);
   const [objective, setObjective] = useState<string>("release");
   const [c, setC] = useState<Controls>(EMPTY);
   const [q, setQ] = useState("");
-  const [batch, setBatch] = useState<string | null>(null);
   const [view, setView] = useState<"new" | "history">("new");
   const [histFilter, setHistFilter] = useState<"all" | "saved">("all");
 
@@ -104,7 +108,7 @@ export default function PromptStudioPage() {
         },
       }),
     onSuccess: (r) => {
-      setBatch(r.batch_id);
+      setSearch({ batch: r.batch_id });
       history.refetch();
     },
   });
@@ -115,9 +119,20 @@ export default function PromptStudioPage() {
   const p = profile.data;
   const profileReady = p?.targets.basis === "strongest_responses";
   const tempoHint = p?.targets.features.find((f) => f.feature === "tempo_bpm");
-  const batchPrompts = useMemo(() => (history.data ?? []).filter((x) => x.batch_id === batch && !x.parent_id).sort((a, b) => a.id - b.id), [history.data, batch]);
+  const batchPrompts = useMemo(() => (batchQuery.data ?? []).filter((x) => !x.parent_id).sort((a, b) => a.id - b.id), [batchQuery.data]);
   const [active, setActive] = useState(0);
   const histList = (history.data ?? []).filter((x) => histFilter === "all" || x.saved);
+
+  if (batch && search.get("quick") === "1") {
+    const prompt = batchPrompts[0];
+    return <div className="mx-auto max-w-4xl">
+      <PageHeader title={prompt?.effective.mode_label === "Sinulle" ? "Suno-kehote juuri sinulle" : "Oma versiosi Sunoon"} description="Kehote on tallennettu. Kopioi tyylikuvaus ja rakenne Sunoon, luo kappale ja tuo tulos takaisin kuunneltavaksi." actions={<Button onClick={() => setSearch({ batch })}>Avaa kaikki säädöt</Button>} />
+      {batchQuery.isLoading ? <Spinner label="Ladataan kehotetta…" /> : null}
+      <ErrorNote error={batchQuery.error} />
+      {batchQuery.isSuccess && !prompt ? <Empty title="Kehotetta ei löytynyt">Palaa kirjastoon ja luo uusi kehote.</Empty> : null}
+      {prompt ? <QuickPromptCard key={prompt.id} prompt={prompt} /> : null}
+    </div>;
+  }
   const canGenerate = sources.length > 0 || profileReady;
 
   return (

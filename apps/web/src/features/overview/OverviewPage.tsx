@@ -7,6 +7,7 @@ import { ResonanceMark } from "@/design-system/brand";
 import { api, qk, useProfile } from "@/services/api";
 import { fmtDate, STAGE_FI } from "@/services/format";
 import { InsightCard } from "@/features/sonic-dna/InsightCard";
+import { ForYouCard } from "@/features/library/ForYouCard";
 
 export default function OverviewPage() {
   const ov = useQuery({ queryKey: qk.overview, queryFn: api.overview, refetchInterval: (q) => (q.state.data?.incomplete.some((i) => i.status !== "failed") ? 2000 : false) });
@@ -19,6 +20,7 @@ export default function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-5">
+      <ForYouCard />
       {/* hero */}
       <section className="panel relative overflow-hidden">
         <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">

@@ -20,6 +20,8 @@ from app.models import (
     ExperienceRating,
     GeneratedPrompt,
     MediaAsset,
+    MusicFolder,
+    MusicFolderEntry,
     PairwiseComparison,
     SonicProfileSnapshot,
 )
@@ -172,6 +174,8 @@ def _all_data(session: Session) -> dict[str, Any]:
         "analysis_version": ALGORITHM_VERSION,
         "core_version": CORE_VERSION,
         "media_assets": rows(MediaAsset),
+        "music_folders": rows(MusicFolder),
+        "music_folder_entries": rows(MusicFolderEntry),
         "audio_analyses": analyses,
         "experience_ratings": rows(ExperienceRating),
         "experience_markers": rows(ExperienceMarker),

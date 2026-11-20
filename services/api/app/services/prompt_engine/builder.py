@@ -232,6 +232,32 @@ CONTRAST_GENRES = {
     "default": ["neoclassical", "industrial", "world fusion"],
 }
 
+# File "genre" tags that describe no musical style. Downloads (e.g. from YouTube) often carry the
+# platform's video category instead of a genre; sent to Suno they would steer the style field.
+# The original tag is kept on the asset; it is only ignored as a style hint.
+NON_MUSICAL_GENRE_TAGS = {
+    "music", "musiikki", "audio", "song", "songs", "other", "others", "misc", "miscellaneous", "unknown",
+    "genre", "none", "n/a", "na", "-", "various", "default", "general", "uncategorized", "unclassified",
+    # YouTube video categories
+    "film & animation", "autos & vehicles", "pets & animals", "sports", "travel & events", "gaming",
+    "people & blogs", "comedy", "entertainment", "news & politics", "howto & style", "education",
+    "science & technology", "nonprofits & activism", "shows", "trailers", "movies",
+}
+
+
+def usable_genre_tag(tag: str | None) -> str | None:
+    """Return a file genre tag only if it plausibly names a musical style."""
+    if not tag:
+        return None
+    clean = " ".join(tag.split())
+    key = clean.casefold()
+    if not clean or key in NON_MUSICAL_GENRE_TAGS or len(clean) > 40:
+        return None
+    # ID3v1 numeric genre codes such as "17" or "(17)" carry no readable style.
+    if key.strip("()").isdigit():
+        return None
+    return clean
+
 TITLE_WORDS = {
     "default": (["Low", "Deep", "Distant", "Hidden", "Slow", "Quiet", "Inner", "Silver", "Midnight", "Hollow"],
                 ["Current", "Signal", "Field", "Horizon", "Pulse", "Tide", "Orbit", "Threshold", "Echo", "Drift"]),
@@ -291,7 +317,8 @@ def build_reference(sources: list[TrackRecord], profile: dict[str, Any] | None) 
         if gb is not None and gb > 0.6:
             arc = "gradual_build"
     half = any((t.analysis.summary["rhythm"].get("tempo_ambiguity") or {}).get("kind") == "half" for t in sources)
-    tags = sorted({t.asset.genre_tag for t in sources if t.asset.genre_tag})
+    usable = [g for g in (usable_genre_tag(t.asset.genre_tag) for t in sources) if g]
+    tags = sorted({g.casefold(): g for g in usable}.values(), key=str.casefold)
     roles: list[str] = []
     for t in sources[:1]:
         roles = [s.get("role", "section") for s in t.analysis.segments]

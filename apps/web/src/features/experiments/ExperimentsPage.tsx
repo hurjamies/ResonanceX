@@ -184,7 +184,7 @@ export default function ExperimentsPage() {
     if (prevKey.current !== pendingKey) refetchExps();
     prevKey.current = pendingKey;
   }, [pendingKey, refetchExps]);
-  const prompts = useQuery({ queryKey: qk.prompts, queryFn: api.prompts });
+  const prompts = useQuery({ queryKey: qk.prompts, queryFn: () => api.prompts() });
   const [pid, setPid] = useState<number | null>(null);
   const qc = useQueryClient();
   return (

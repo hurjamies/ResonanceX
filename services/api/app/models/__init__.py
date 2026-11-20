@@ -22,6 +22,24 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class MusicFolder(SQLModel, table=True):
+    __tablename__ = "music_folder"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    name_key: str = Field(unique=True)
+    genre: str
+
+
+class MusicFolderEntry(SQLModel, table=True):
+    """User organization, kept separate from the original file's genre metadata."""
+
+    __tablename__ = "music_folder_entry"
+
+    asset_id: int = Field(primary_key=True, foreign_key="media_asset.id")
+    folder_id: int = Field(foreign_key="music_folder.id", index=True)
+
+
 class MediaAsset(SQLModel, table=True):
     __tablename__ = "media_asset"
 
@@ -222,6 +240,8 @@ class GenerationJob(SQLModel, table=True):
 
 
 __all__ = [
+    "MusicFolder",
+    "MusicFolderEntry",
     "MediaAsset",
     "AudioAnalysis",
     "AnalysisJob",

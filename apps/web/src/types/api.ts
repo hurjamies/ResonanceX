@@ -28,6 +28,7 @@ export interface Asset {
   artist: string | null;
   album: string | null;
   genre_tag: string | null;
+  folder_id: number | null;
   rights_confirmed: boolean;
   prompt_id: number | null;
   source_provider: string | null;
@@ -52,6 +53,32 @@ export interface UploadResult {
   error?: string;
   code?: string;
   asset?: Asset;
+}
+
+export interface MusicFolder {
+  id: number;
+  name: string;
+  genre: string;
+  track_count: number;
+  ready_count: number;
+  pending_count: number;
+}
+
+export interface MusicSuggestion {
+  ready: boolean;
+  pending_count: number;
+  title: string;
+  description: string;
+  genres: string[];
+  sound_summary: string[];
+  source_asset_ids: number[];
+  sources: { id: number; title: string; preference: number }[];
+  tracks_considered: number;
+  genres_considered: number;
+  ratings_count: number;
+  reasons: string[];
+  note: string;
+  rate_asset_id: number | null;
 }
 
 export interface Segment {
@@ -396,7 +423,7 @@ export interface PromptRecord {
   provider_model: string | null;
   source_asset_ids: number[];
   controls: Record<string, unknown>;
-  specification: Record<string, unknown> & { target_features: { feature: string; label: string; target: number; tolerance: number }[] };
+  specification: Record<string, unknown> & { target_features: { feature: string; label: string; target: number; tolerance: number }[]; extra?: { music_library?: { folder_id?: number; folder_name?: string } } };
   compiled: SunoPackage;
   edited: Partial<SunoPackage>;
   effective: SunoPackage;

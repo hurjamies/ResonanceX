@@ -91,6 +91,19 @@ Local CLI for Claude Code workflows: `./scripts/rx --help`.
 
 ### First use
 
+**Genre folders and a personal suggestion:** In **Kirjasto**, start with **Metalli**, **Elektroninen**
+or **Country**, or create your own genre folder with **Uusi lokero**. Choose the destination when
+uploading; existing tracks can be moved with the folder selector on each row. **Luo Suno-kehote**
+creates a saved prompt from that folder's analysed tracks and opens a short copy-to-Suno view.
+Original genre metadata is preserved. Each track belongs to one folder at a time.
+
+The **Sinulle** card on the home and library pages considers every current analysed track,
+including unfiled music. It compares genre groups using all enjoyment ratings, then builds a
+creative proposal from tracks rated at least 6/10 for enjoyment. Up to 12 references from up to
+three groups keep the proposal focused and prevent a large folder from crowding out other
+styles. Affect alone is not treated as enjoyment. The card shows its sources and method;
+feedback updates the next proposal. No external generation or payment happens when a prompt is created.
+
 1. **Kirjasto → Tuo musiikkia**: add 6–10 tracks. Include music that strongly affects you, *and*
    music that leaves you indifferent or that you dislike. Contrast is what makes patterns visible.
 2. Open each track, listen, and fill in **Kokemuksesi** (skip dimensions that don't apply). Mark strong

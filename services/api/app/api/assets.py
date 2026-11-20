@@ -19,12 +19,14 @@ from app.models import (
     GeneratedPrompt,
     GenerationJob,
     MediaAsset,
+    MusicFolderEntry,
     PairwiseComparison,
     utcnow,
 )
 from app.services.audio_analysis.engine import ALGORITHM_VERSION, STAGES
 from app.services.ingestion.service import IngestionError, asset_path, ingest_audio
 from app.services.resonance_core.core import similar_tracks
+from app.services.music_library import folder_or_404, set_folder
 from app.workers.jobs import remove_analysis_files, runner
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -33,7 +35,7 @@ router = APIRouter(prefix="/api/assets", tags=["assets"])
 UPLOAD_SOURCES = {"manual_upload", "suno_manual", "suno_mcp", "other"}
 
 
-def asset_dict(a: MediaAsset, job: AnalysisJob | None = None, rating: ExperienceRating | None = None, markers: int = 0) -> dict[str, Any]:
+def asset_dict(a: MediaAsset, job: AnalysisJob | None = None, rating: ExperienceRating | None = None, markers: int = 0, folder_id: int | None = None) -> dict[str, Any]:
     d = a.model_dump(exclude={"stored_filename", "tags"})
     d["created_at"] = a.created_at.isoformat()
     d["updated_at"] = a.updated_at.isoformat()
@@ -53,6 +55,7 @@ def asset_dict(a: MediaAsset, job: AnalysisJob | None = None, rating: Experience
     if rating:
         d["rating_summary"] = {k: v for k, v in rating.dimensions.items() if v is not None}
     d["marker_count"] = markers
+    d["folder_id"] = folder_id
     return d
 
 
@@ -95,7 +98,8 @@ def list_assets(
     if ids:
         for m in session.exec(select(ExperienceMarker.asset_id).where(ExperienceMarker.asset_id.in_(ids))).all():
             mcount[m] = mcount.get(m, 0) + 1
-    return [asset_dict(a, jobs.get(a.id), ratings.get(a.id), mcount.get(a.id, 0)) for a in assets]
+    folders = {e.asset_id: e.folder_id for e in session.exec(select(MusicFolderEntry)).all()}
+    return [asset_dict(a, jobs.get(a.id), ratings.get(a.id), mcount.get(a.id, 0), folders.get(a.id)) for a in assets]
 
 
 @router.post("/upload")
@@ -105,6 +109,7 @@ def upload_assets(
     origin: str = Form("library"),
     prompt_id: Optional[int] = Form(None),
     source_provider: Optional[str] = Form(None),
+    folder_id: Optional[int] = Form(None),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     if source_provider is not None and source_provider not in UPLOAD_SOURCES:
@@ -113,6 +118,8 @@ def upload_assets(
         raise HTTPException(422, "origin must be 'library' or 'generated'")
     if not rights_confirmed:
         raise HTTPException(422, "Vahvista, että sinulla on oikeus käyttää tiedostoja henkilökohtaiseen analyysiin.")
+    if folder_id is not None:
+        folder_or_404(session, folder_id)
     if prompt_id is not None:
         if session.get(GeneratedPrompt, prompt_id) is None:
             raise HTTPException(404, "Kehotetta ei löytynyt")
@@ -127,6 +134,9 @@ def upload_assets(
         except IngestionError as exc:
             results.append({"filename": f.filename, "ok": False, "error": str(exc), "code": exc.code})
             continue
+        if folder_id is not None:
+            set_folder(session, res.asset.id, folder_id)
+            session.commit()
         if res.job is not None:
             runner.submit(res.job.id)
             session.refresh(res.asset)
@@ -136,7 +146,8 @@ def upload_assets(
             if res.asset.prompt_id == prompt_id:
                 refresh_experiment(session, res.asset)
         job = _latest_jobs(session, [res.asset.id]).get(res.asset.id)
-        results.append({"filename": f.filename, "ok": True, "duplicate": res.duplicate, "asset": asset_dict(res.asset, job)})
+        entry = session.get(MusicFolderEntry, res.asset.id)
+        results.append({"filename": f.filename, "ok": True, "duplicate": res.duplicate, "asset": asset_dict(res.asset, job, folder_id=entry.folder_id if entry else None)})
     return {"results": results}
 
 
@@ -146,7 +157,8 @@ def get_asset(asset_id: int, session: Session = Depends(get_session)) -> dict[st
     job = _latest_jobs(session, [asset_id]).get(asset_id)
     rating = session.exec(select(ExperienceRating).where(ExperienceRating.asset_id == asset_id)).first()
     n_markers = len(session.exec(select(ExperienceMarker.id).where(ExperienceMarker.asset_id == asset_id)).all())
-    d = asset_dict(a, job, rating, n_markers)
+    entry = session.get(MusicFolderEntry, asset_id)
+    d = asset_dict(a, job, rating, n_markers, entry.folder_id if entry else None)
     d["metadata_tags"] = a.tags
     if a.prompt_id:
         p = session.get(GeneratedPrompt, a.prompt_id)
@@ -158,24 +170,34 @@ class AssetPatch(BaseModel):
     title: Optional[str] = Field(default=None, max_length=300)
     artist: Optional[str] = Field(default=None, max_length=300)
     genre_tag: Optional[str] = Field(default=None, max_length=120)
+    folder_id: Optional[int] = None
 
 
 @router.patch("/{asset_id}")
 def patch_asset(asset_id: int, body: AssetPatch, session: Session = Depends(get_session)) -> dict[str, Any]:
     a = get_asset_or_404(session, asset_id)
+    if "folder_id" in body.model_fields_set:
+        set_folder(session, asset_id, body.folder_id)
     for k, v in body.model_dump(exclude_unset=True).items():
+        if k == "folder_id":
+            continue
         setattr(a, k, v.strip() if isinstance(v, str) else v)
     a.updated_at = utcnow()
     session.add(a)
     session.commit()
     session.refresh(a)
-    return asset_dict(a)
+    entry = session.get(MusicFolderEntry, asset_id)
+    return asset_dict(a, folder_id=entry.folder_id if entry else None)
 
 
 @router.delete("/{asset_id}")
 def delete_asset(asset_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
     a = get_asset_or_404(session, asset_id)
     path = asset_path(a)
+    entry = session.get(MusicFolderEntry, asset_id)
+    if entry:
+        session.delete(entry)
+        session.flush()
     for model in (AudioAnalysis, AnalysisJob, ExperienceMarker, ExperienceRating, FeedbackSession):
         for row in session.exec(select(model).where(model.asset_id == asset_id)).all():
             session.delete(row)

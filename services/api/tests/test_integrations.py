@@ -195,7 +195,7 @@ def test_legacy_database_is_adopted_without_data_loss(make_client, tmp_path):
         assets = client.get("/api/assets").json()
         assert [a["original_filename"] for a in assets] == ["old.wav"] and assets[0]["source_provider"] is None
     con = sqlite3.connect(db)
-    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0002_generation"
+    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0003_music_folders"
     assert "generation_job" in {r[0] for r in con.execute("select name from sqlite_master where type='table'")}
     con.close()
 

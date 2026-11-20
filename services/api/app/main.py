@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.api import assets, experience, integrations, prompts, system
+from app.api import assets, experience, integrations, music, prompts, system
 from app.config import REPO_ROOT, get_settings
 from app.database.session import init_db
 from app.services.integrations import generation
@@ -39,7 +39,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for r in (assets.router, experience.router, prompts.router, integrations.router, system.router):
+    for r in (assets.router, experience.router, prompts.router, integrations.router, music.router, system.router):
         app.include_router(r)
 
     @app.exception_handler(ValueError)
