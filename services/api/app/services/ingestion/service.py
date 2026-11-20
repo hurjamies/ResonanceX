@@ -41,6 +41,7 @@ def ingest_audio(
     origin: str = "library",
     prompt_id: int | None = None,
     rights_confirmed: bool = False,
+    source_provider: str | None = None,
 ) -> IngestResult:
     settings = get_settings()
     settings.ensure_dirs()
@@ -78,6 +79,9 @@ def ingest_audio(
             # A library track re-imported as a generated result is linked, not duplicated
             if prompt_id and existing.prompt_id is None and existing.origin == "generated":
                 existing.prompt_id = prompt_id
+                changed = True
+            if source_provider and existing.origin == "generated" and existing.source_provider is None:
+                existing.source_provider = source_provider
                 changed = True
             if changed:
                 existing.updated_at = utcnow()
@@ -123,6 +127,7 @@ def ingest_audio(
             tags=info.tags,
             rights_confirmed=rights_confirmed,
             prompt_id=prompt_id,
+            source_provider=source_provider,
             status="pending",
         )
         session.add(asset)

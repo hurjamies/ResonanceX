@@ -10,6 +10,14 @@ import { usePlayer } from "@/stores/player";
 import type { Asset, UploadResult } from "@/types/api";
 import { UploadResults, Uploader } from "./Uploader";
 
+const SOURCE_FI: Record<string, string> = {
+  elevenlabs: "ElevenLabs-tulos",
+  suno_mcp: "Suno MCP -tulos",
+  suno_manual: "Suno-tulos",
+  manual_upload: "Generoitu tulos",
+  other: "Generoitu tulos",
+};
+
 export function StatusPill({ a }: { a: Asset }) {
   if (a.status === "completed") return <span className="rounded-full bg-ok/10 px-2 py-0.5 text-2xs text-ok">Analysoitu</span>;
   if (a.status === "failed")
@@ -139,7 +147,7 @@ export default function LibraryPage() {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
                     {a.artist && <span className="truncate">{a.artist}</span>}
                     <span className="font-mono tabular">{fmtTime(a.duration_seconds)}</span>
-                    {a.origin === "generated" && <span className="rounded border border-gold/30 px-1 text-[10px] text-gold">Suno-tulos</span>}
+                    {a.origin === "generated" && <span className="rounded border border-gold/30 px-1 text-[10px] text-gold">{SOURCE_FI[a.source_provider ?? ""] ?? "Generoitu"}</span>}
                     {a.rated && <span className="text-gold">● arvioitu</span>}
                     {a.marker_count > 0 && <span>{a.marker_count} merkintää</span>}
                   </div>

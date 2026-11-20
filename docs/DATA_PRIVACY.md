@@ -9,6 +9,7 @@ ResonanceX handles intimate self-reports and copyrighted media, so it is private
 | Original audio files | `data/uploads/<sha[:2]>/<sha256>.<ext>` (never modified) |
 | Database (assets, analyses, ratings, history, markers, comparisons, profiles, prompts, experiments) | `data/resonancex.db` (SQLite) |
 | Time series and spectrogram images | `data/analysis/<asset_id>/<algorithm_version>/` |
+| Generation requests (exact payload, disclosure, cost estimate, outcome; no secrets) | `generation_job` table |
 
 `data/` is git-ignored. Override the location with `RESONANCEX_DATA_DIR`. To back up, copy the
 directory. To erase everything, delete it.
@@ -16,13 +17,17 @@ directory. To erase everything, delete it.
 ## Network behaviour
 
 * The API binds to `127.0.0.1` by default. Do not expose it to a network; it has no authentication.
-* The app makes **no outbound requests**: no telemetry, CDN fonts or analytics, and no AI APIs.
-* Nothing is sent to Suno or any other service by the app. Prompts leave the machine only when *you*
-  copy them. Prompts contain derived musical descriptors, not your reflections or personal profile.
-* Future providers will show what is about to leave the app (prompt text, audio, images, annotations or
-  profile) and require explicit consent per action. A minimal derived brief is preferred over the full profile.
-* Provider secrets, when added, stay in server-side environment variables. They are never sent to the
-  browser and never committed (`.env` is git-ignored; see `.env.example`).
+* By default the app makes **no outbound requests**: no telemetry, CDN fonts or analytics.
+* **ElevenLabs (optional)** is contacted only when you (a) create a free composition plan or (b) confirm a
+  generation. Both actions show the exact request first and require you to accept the disclosure;
+  generation also requires accepting the cost estimate. Only the English musical description text is sent:
+  never audio, ratings, reflections, markers or your profile. The created song is also stored in your
+  ElevenLabs history under their terms.
+* **Suno** is never contacted by the app. You copy prompts yourself, or Claude Code sends them through your
+  own Suno MCP connection after asking you.
+* The `rx` CLI talks only to the local app; it refuses non-local hosts.
+* Provider secrets (`ELEVENLABS_API_KEY`) are read from the server environment only, held as secret values,
+  and never returned by the API, sent to the browser or committed (`.env` is git-ignored).
 
 ## Input safety
 

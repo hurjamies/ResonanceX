@@ -4,6 +4,8 @@ import type {
   Asset,
   Comparison,
   Experiment,
+  GenerationJob,
+  Handoff,
   Marker,
   Overview,
   Profile,
@@ -87,6 +89,15 @@ export const api = {
   experiments: () => request<Experiment[]>("/api/experiments"),
   patchExperiment: (id: number, body: { outcome_note: string }) => request<Experiment>(`/api/experiments/${id}`, { method: "PATCH", body: json(body) }),
   providers: () => request<Provider[]>("/api/providers"),
+  handoff: (promptId: number) => request<Handoff>(`/api/prompts/${promptId}/handoff`),
+  generations: (promptId?: number) => request<GenerationJob[]>(`/api/generations${promptId ? `?prompt_id=${promptId}` : ""}`),
+  generation: (id: number) => request<GenerationJob>(`/api/generations/${id}`),
+  prepareGeneration: (body: { prompt_id: number; provider: "elevenlabs"; model_id?: string; duration_seconds?: number }) =>
+    request<GenerationJob>("/api/generations", { method: "POST", body: json(body) }),
+  planGeneration: (id: number, acceptDisclosure: boolean) => request<GenerationJob>(`/api/generations/${id}/plan`, { method: "POST", body: json({ accept_disclosure: acceptDisclosure }) }),
+  confirmGeneration: (id: number, acceptedCost: number, acceptDisclosure: boolean) =>
+    request<GenerationJob>(`/api/generations/${id}/confirm`, { method: "POST", body: json({ accepted_cost: acceptedCost, accept_disclosure: acceptDisclosure }) }),
+  cancelGeneration: (id: number) => request<GenerationJob>(`/api/generations/${id}/cancel`, { method: "POST" }),
   settings: () => request<SettingsInfo>("/api/settings"),
 };
 
@@ -105,7 +116,13 @@ export const qk = {
   prompts: ["prompts"],
   experiments: ["experiments"],
   comparisons: ["comparisons"],
+  providers: ["providers"],
+  generations: ["generations"],
 };
+
+export function useProviders() {
+  return useQuery({ queryKey: qk.providers, queryFn: api.providers });
+}
 
 export function useVocabulary() {
   return useQuery({ queryKey: qk.vocab, queryFn: api.vocabulary, staleTime: Infinity });

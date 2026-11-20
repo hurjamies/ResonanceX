@@ -35,18 +35,32 @@ Acceptance workflows A–G pass via `services/api/tests/test_workflow.py` (API) 
 * Chord estimation covers major/minor triads only. Structure role labels are heuristic.
 * Loudness is computed on a 22.05 kHz analysis copy, so it is approximate.
 * No lyric generation (it needs an LLM). Vocal prompts provide the structure only.
-* The schema is created with `create_all`; there are no Alembic migrations yet.
 * Insight texts are rule-based Finnish templates; there is no optional LLM narrative layer yet.
 
-## Phase 3: Provider integrations ⏳ next
+## Phase 3: Provider integrations ✅
 
-1. Document a Claude Code + official Suno MCP workflow. Inspect the tools the connected server actually
-   exposes before building anything.
-2. Provider adapter interface: `compile`, `settings`, `authenticate`, `generate`, `job_status`, `import`,
-   `cost`. Every paid action must be explicit, with the cost shown first.
-3. ElevenLabs Music: verify the composition-plan schema against the live API, keep the key server-side,
-   and import the output automatically into an experiment.
-4. Optional LLM narrative and lyrics layer that receives only structured evidence and is opt-in per request.
+* Provider abstraction (`services/integrations`): adapter contract, registry, and computed status
+  (not configured → configured → verified only after a real success).
+* **Suno MCP via Claude Code**: hand-off brief, `/suno-generate` slash command, `scripts/rx` local CLI (list,
+  hand-off, import with provenance, experiments). Tool names are discovered from the connected server, never
+  assumed, and credit use needs the user's yes.
+* **ElevenLabs Music API**: preview → disclosure → optional free plan (provider plan passed through
+  unchanged) → cost consent → generate → automatic import as an experiment. Per-request spend cap, no
+  automatic re-send after restart, error mapping.
+* Generated media management: provenance badges, a generation history on Kokeet, and links between prompts,
+  generations, assets and experiments.
+* Alembic migrations, with safe adoption of Phase 1–2 databases.
+* A concurrency fix for profile snapshot creation (it surfaced as an HTTP 500 under parallel polling).
+
+**Not yet verified live:** the ElevenLabs adapter is tested against a local stand-in of the documented API.
+`api.elevenlabs.io` was blocked from the build environment. The first real generation on a user's machine
+moves the status to "Varmennettu".
+
+### Phase 3 follow-ups
+
+* Optional LLM narrative and lyrics layer that receives only structured evidence and is opt-in per request.
+* Streaming endpoint (`/v1/music/stream`) for progressive playback, if useful.
+* Suno MCP inside the app only if Suno documents an authorisation flow for third-party apps.
 
 ## Phase 4: VisualDNA ⏳
 
@@ -68,6 +82,5 @@ evolution across profile versions, and experiment recommendations.
 
 ## Technical follow-ups
 
-* Alembic migrations before the first breaking schema change.
 * Optional process-pool analysis for very long files and batch speed.
 * Optional Essentia / embedding models behind a "model prediction" category, never mixed with measurements.

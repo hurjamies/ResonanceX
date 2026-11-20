@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# ResonanceX local CLI (see services/api/app/cli.py). Talks only to the local app.
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT/services/api" && exec .venv/bin/python -m app.cli "$@"

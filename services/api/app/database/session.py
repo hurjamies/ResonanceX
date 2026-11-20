@@ -4,7 +4,7 @@ from collections.abc import Iterator
 
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, create_engine
 
 from app.config import get_settings
 
@@ -40,9 +40,11 @@ def reset_engine() -> None:
 
 
 def init_db() -> None:
+    """Create or upgrade the schema with Alembic migrations (never drops user data)."""
     from app import models  # noqa: F401 - register tables
+    from app.database.migrate import upgrade_database
 
-    SQLModel.metadata.create_all(get_engine())
+    upgrade_database(get_engine())
 
 
 def get_session() -> Iterator[Session]:

@@ -17,6 +17,7 @@ from app.models import (
     ExperienceRating,
     FeedbackSession,
     GeneratedPrompt,
+    GenerationJob,
     MediaAsset,
     PairwiseComparison,
     utcnow,
@@ -27,6 +28,9 @@ from app.services.resonance_core.core import similar_tracks
 from app.workers.jobs import remove_analysis_files, runner
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
+
+# Provenance values a user upload may declare (API generations set their own provider id)
+UPLOAD_SOURCES = {"manual_upload", "suno_manual", "suno_mcp", "other"}
 
 
 def asset_dict(a: MediaAsset, job: AnalysisJob | None = None, rating: ExperienceRating | None = None, markers: int = 0) -> dict[str, Any]:
@@ -100,8 +104,11 @@ def upload_assets(
     rights_confirmed: bool = Form(False),
     origin: str = Form("library"),
     prompt_id: Optional[int] = Form(None),
+    source_provider: Optional[str] = Form(None),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
+    if source_provider is not None and source_provider not in UPLOAD_SOURCES:
+        raise HTTPException(422, f"source_provider must be one of {sorted(UPLOAD_SOURCES)}")
     if origin not in ("library", "generated"):
         raise HTTPException(422, "origin must be 'library' or 'generated'")
     if not rights_confirmed:
@@ -110,10 +117,13 @@ def upload_assets(
         if session.get(GeneratedPrompt, prompt_id) is None:
             raise HTTPException(404, "Kehotetta ei löytynyt")
         origin = "generated"
+        source_provider = source_provider or "manual_upload"
+    elif source_provider is not None:
+        raise HTTPException(422, "source_provider requires prompt_id")
     results = []
     for f in files:
         try:
-            res = ingest_audio(session, f.file, f.filename or "audio", origin=origin, prompt_id=prompt_id, rights_confirmed=rights_confirmed)
+            res = ingest_audio(session, f.file, f.filename or "audio", origin=origin, prompt_id=prompt_id, rights_confirmed=rights_confirmed, source_provider=source_provider)
         except IngestionError as exc:
             results.append({"filename": f.filename, "ok": False, "error": str(exc), "code": exc.code})
             continue
@@ -171,6 +181,10 @@ def delete_asset(asset_id: int, session: Session = Depends(get_session)) -> dict
             session.delete(row)
     for row in session.exec(select(CreativeExperiment).where(CreativeExperiment.generated_asset_id == asset_id)).all():
         session.delete(row)
+    for job in session.exec(select(GenerationJob).where(GenerationJob.result_asset_id == asset_id)).all():
+        job.result_asset_id = None
+        job.response_meta = {**(job.response_meta or {}), "result_deleted": True}
+        session.add(job)
     for row in session.exec(
         select(PairwiseComparison).where((PairwiseComparison.asset_a_id == asset_id) | (PairwiseComparison.asset_b_id == asset_id))
     ).all():

@@ -31,9 +31,14 @@ re-analysis.
 phrases to `FEATURE_PHRASES` in `prompt_engine/builder.py`. Add a tolerance in `TOLERANCES` if it should
 be an experiment target.
 
-**Add a provider.** Add a compiler in `prompt_engine/compilers.py` that consumes `PromptSpecification`, then
-register it in `PROVIDERS` with a truthful status. Generation must be explicit, cost-aware and user-triggered.
-Never invent endpoints; verify against official docs or the connected MCP tool list.
+**Add a provider.** Implement the `ProviderAdapter` protocol in `app/services/integrations/` and register
+it in `registry.py`. API generation goes through `generation.py` (prepare → confirm with cost → run → ingest).
+Use only documented endpoints, and test the exact wire format against a local stand-in like
+`tests/fake_elevenlabs.py`. Never mark a provider verified without a real success.
+
+**Change the schema.** Edit `app/models`, then from `services/api` run
+`.venv/bin/alembic revision --autogenerate -m "describe"`. Review the file (SQLite batch mode) and add a
+test that upgrades an existing database.
 
 **Add a UI feature.** Create a page under `apps/web/src/features/<module>/`, add types in `types/api.ts`, a
 client function in `services/api.ts`, and the route in `app/App.tsx`. Use the primitives in
@@ -42,8 +47,10 @@ All user-facing text is in Finnish.
 
 ## Using the Suno MCP from Claude Code
 
-See `docs/PROVIDER_INTEGRATIONS.md`. List the actual tools first. Confirm with the user before any
-credit-spending call. Import the result through the app (`prompt_id`) so the feedback loop records it.
+Run `/suno-generate <prompt-id>` (`.claude/commands/suno-generate.md`). It fetches the brief with
+`./scripts/rx prompt <id> --handoff`, checks that the `suno` MCP server is connected, lists its real tools,
+confirms the fields and credit use with the user, and imports the downloaded song with `./scripts/rx import`.
+Never guess tool names, and never create music without the user's explicit yes.
 
 ## Definition of done
 

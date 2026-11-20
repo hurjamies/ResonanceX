@@ -24,9 +24,19 @@ def audio_dir(tmp_path_factory) -> Path:
     return d
 
 
-def _make_client(data_dir: Path):
+PROVIDER_ENV = ("ELEVENLABS_API_KEY", "RESONANCEX_ELEVENLABS_API_KEY", "RESONANCEX_ELEVENLABS_BASE_URL", "RESONANCEX_MAX_GENERATION_USD")
+
+
+def _make_client(data_dir: Path, **env: str):
     import os
 
+    for k in PROVIDER_ENV:
+        os.environ.pop(k, None)
+    # never pick up a real key from a developer's .env during tests
+    if not any(k in env for k in ("ELEVENLABS_API_KEY", "RESONANCEX_ELEVENLABS_API_KEY")):
+        os.environ["ELEVENLABS_API_KEY"] = ""
+        os.environ["RESONANCEX_ELEVENLABS_API_KEY"] = ""
+    os.environ.update(env)
     os.environ["RESONANCEX_DATA_DIR"] = str(data_dir)
     os.environ["RESONANCEX_SYNCHRONOUS_JOBS"] = "true"
     os.environ["RESONANCEX_SERVE_FRONTEND"] = "false"

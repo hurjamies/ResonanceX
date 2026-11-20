@@ -30,6 +30,7 @@ export interface Asset {
   genre_tag: string | null;
   rights_confirmed: boolean;
   prompt_id: number | null;
+  source_provider: string | null;
   status: AssetStatus;
   status_stage: string | null;
   error: string | null;
@@ -415,11 +416,57 @@ export interface PromptOptions {
 export interface Provider {
   id: string;
   name: string;
-  status: string;
+  kind: "manual" | "assisted" | "api";
+  configured: boolean | null;
+  status: "available" | "external" | "not_configured" | "configured" | "verified";
   status_fi: string;
   generation: boolean;
-  models?: string[];
+  models?: { id: string; label: string; note_fi: string }[];
+  default_model?: string;
+  cost?: { usd_per_minute: number; max_per_request_usd: number; basis_fi: string };
+  setup_fi: string[];
   notes_fi: string;
+  docs: string[];
+  last_success_at?: string | null;
+}
+
+export interface CostEstimate {
+  currency: string;
+  amount: number;
+  minutes: number;
+  rate_per_minute: number;
+  basis: string;
+  basis_fi: string;
+  exceeds_cap: boolean;
+  cap: number;
+  note_fi: string;
+}
+
+export interface GenerationJob {
+  id: number;
+  provider: string;
+  prompt_id: number;
+  prompt_title?: string | null;
+  status: "awaiting_confirmation" | "queued" | "running" | "completed" | "failed" | "cancelled";
+  provider_model: string | null;
+  request: { endpoint: string; mode: "prompt" | "plan"; query: Record<string, string>; body: Record<string, unknown> };
+  disclosure: string[];
+  cost_estimate: CostEstimate;
+  confirmed_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  result_asset_id: number | null;
+  result_asset?: { id: number; title: string | null; status: string } | null;
+  response_meta: Record<string, unknown> & { warnings?: string[]; plan_created_at?: string; requeued_note?: string };
+  error: string | null;
+  created_at: string;
+}
+
+export interface Handoff {
+  prompt_id: number;
+  markdown: string;
+  import_command: string;
+  slash_command: string;
 }
 
 export interface AlignmentRow {

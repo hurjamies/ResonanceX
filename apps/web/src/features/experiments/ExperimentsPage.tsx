@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, CategoryBadge, Empty, PageHeader, Panel, Spinner } from "@/components/ui";
 import { api, qk, useAssets } from "@/services/api";
+import { StatusPill as GenStatus } from "@/features/prompt-studio/ProviderActions";
 import { fmtDate, STAGE_FI } from "@/services/format";
 import type { AlignmentRow, Experiment } from "@/types/api";
 import { Uploader } from "@/features/library/Uploader";
@@ -131,6 +132,45 @@ function ExperimentCard({ e }: { e: Experiment }) {
   );
 }
 
+const PROVIDER_FI: Record<string, string> = { elevenlabs: "ElevenLabs" };
+
+function GenerationHistory() {
+  const gens = useQuery({
+    queryKey: qk.generations,
+    queryFn: () => api.generations(),
+    refetchInterval: (q) => (q.state.data?.some((g) => g.status === "queued" || g.status === "running") ? 2000 : false),
+  });
+  if (!gens.data?.length) return null;
+  return (
+    <Panel eyebrow="Palveluntarjoajat" title={`Generoinnit (${gens.data.length})`}>
+      <ul className="flex flex-col gap-2 text-sm">
+        {gens.data.slice(0, 12).map((g) => (
+          <li key={g.id} className="rounded-lg border border-line px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="truncate">
+                #{g.id} · {PROVIDER_FI[g.provider] ?? g.provider} · {g.prompt_title ?? `kehote #${g.prompt_id}`}
+              </span>
+              <GenStatus job={g} />
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 text-2xs text-faint">
+              <span>{g.provider_model}</span>
+              <span>arvio ~{g.cost_estimate.amount.toFixed(2)} $</span>
+              <span>{fmtDate(g.created_at)}</span>
+              {g.result_asset && (
+                <Link to={`/tracks/${g.result_asset.id}`} className="text-gold hover:underline">
+                  {g.result_asset.title}
+                </Link>
+              )}
+            </div>
+            {g.error && <div className="mt-1 text-xs text-danger">{g.error}</div>}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-2xs text-faint">Hyväksyntää odottavat pyynnöt voi vahvistaa tai perua kehotekortin ElevenLabs-ikkunasta. Mitään ei lähetetä uudelleen automaattisesti.</p>
+    </Panel>
+  );
+}
+
 export default function ExperimentsPage() {
   const assets = useAssets();
   const pending = (assets.data ?? []).filter((a) => a.origin === "generated" && a.status !== "completed");
@@ -188,7 +228,8 @@ export default function ExperimentsPage() {
             (exps.data ?? []).map((e) => <ExperimentCard key={e.id} e={e} />)
           )}
         </div>
-        <div className="xl:sticky xl:top-6 xl:self-start">
+        <div className="flex flex-col gap-5 xl:sticky xl:top-6 xl:self-start">
+          <GenerationHistory />
           <Panel eyebrow="Tuo tulos" title="Liitä Suno-kappale kehotteeseen">
             {!prompts.data?.length ? (
               <p className="text-sm text-muted">

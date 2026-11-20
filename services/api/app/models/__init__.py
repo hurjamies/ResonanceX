@@ -47,6 +47,8 @@ class MediaAsset(SQLModel, table=True):
     rights_confirmed: bool = False
     # For generated media: the prompt that produced it.
     prompt_id: Optional[int] = Field(default=None, foreign_key="generated_prompt.id", index=True)
+    # Provenance of generated media: "manual_upload" | "elevenlabs" | "suno_mcp" (via CLI import) …
+    source_provider: Optional[str] = Field(default=None, index=True)
     status: str = Field(default="pending", index=True)  # pending | processing | completed | failed
     status_stage: Optional[str] = None
     error: Optional[str] = None
@@ -192,6 +194,33 @@ class CreativeExperiment(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class GenerationJob(SQLModel, table=True):
+    """A provider generation request. Nothing is sent to a provider until the user
+    has explicitly confirmed the exact request, the data disclosure and the cost."""
+
+    __tablename__ = "generation_job"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    provider: str = Field(index=True)
+    prompt_id: int = Field(foreign_key="generated_prompt.id", index=True)
+    # awaiting_confirmation | queued | running | completed | failed | cancelled
+    status: str = Field(default="awaiting_confirmation", index=True)
+    provider_model: Optional[str] = None
+    # Exact payload that will be / was sent (never contains secrets)
+    request: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Human-readable list of what leaves the machine
+    disclosure: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    cost_estimate: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    confirmed_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    result_asset_id: Optional[int] = Field(default=None, foreign_key="media_asset.id")
+    response_meta: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    error: Optional[str] = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 __all__ = [
     "MediaAsset",
     "AudioAnalysis",
@@ -203,5 +232,6 @@ __all__ = [
     "SonicProfileSnapshot",
     "GeneratedPrompt",
     "CreativeExperiment",
+    "GenerationJob",
     "utcnow",
 ]

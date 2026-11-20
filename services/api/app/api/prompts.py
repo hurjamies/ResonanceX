@@ -9,9 +9,10 @@ from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from app.database.session import get_session
-from app.models import CreativeExperiment, GeneratedPrompt, MediaAsset, utcnow
+from app.models import CreativeExperiment, GeneratedPrompt, GenerationJob, MediaAsset, utcnow
 from app.services.prompt_engine.builder import OBJECTIVES, PromptBuildError, build_variants
-from app.services.prompt_engine.compilers import PROVIDERS, compile_elevenlabs_plan, compile_suno
+from app.services.prompt_engine.compilers import compile_elevenlabs_plan, compile_suno
+from app.services.integrations.registry import provider_infos
 from app.services.prompt_engine.experiments import experiment_outcome
 from app.services.prompt_engine.specification import PromptControls, PromptSpecification
 from app.services.resonance_core.core import compute_profile
@@ -62,7 +63,7 @@ def prompt_dict(p: GeneratedPrompt, session: Session | None = None) -> dict[str,
 def prompt_options() -> dict[str, Any]:
     return {
         "objectives": [{"key": k, "label": v["label"], "dimension": v["dimension"]} for k, v in OBJECTIVES.items()],
-        "providers": list(PROVIDERS.values()),
+        "providers": provider_infos(),
         "vocal_options": [
             {"key": "instrumental", "label": "Instrumentaali"},
             {"key": "female", "label": "Naisvokaali"},
@@ -206,6 +207,8 @@ def delete_prompt(prompt_id: int, session: Session = Depends(get_session)) -> di
     p = _prompt(session, prompt_id)
     if session.exec(select(MediaAsset).where(MediaAsset.prompt_id == prompt_id)).first():
         raise HTTPException(409, "Kehotteeseen on liitetty generoitu kappale – sitä ei voi poistaa.")
+    if session.exec(select(GenerationJob).where(GenerationJob.prompt_id == prompt_id)).first():
+        raise HTTPException(409, "Kehotteella on generointihistoriaa – sitä ei voi poistaa.")
     for child in session.exec(select(GeneratedPrompt).where(GeneratedPrompt.parent_id == prompt_id)).all():
         child.parent_id = None
         session.add(child)

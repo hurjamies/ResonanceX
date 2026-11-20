@@ -12,6 +12,9 @@ importing and re-analysing the generated songs.
   * `app/services/resonance_core/core.py` — profile, insights, evidence levels (`CORE_VERSION`)
   * `app/services/prompt_engine/` — `PromptSpecification` → provider compilers; experiment alignment
   * `app/schemas/vocabulary.py` — experience dimensions, markers, the feature registry (Finnish labels)
+  * `app/services/integrations/` — provider adapters, registry, user-confirmed generation jobs
+  * `app/database/migrations/` — Alembic revisions (run automatically on startup)
+  * `app/cli.py` → `scripts/rx` — local CLI for Claude Code + Suno MCP workflows
 * `apps/web` — React 19 + TS + Vite + Tailwind v4. Finnish UI. Design tokens in `src/styles.css`.
 * `docs/` — architecture, research methods, brand, providers, privacy, roadmap.
 
@@ -39,6 +42,8 @@ importing and re-analysing the generated songs.
 7. **Brand.** ResonanceX (parent), SonicDNA, VisualDNA, Resonance Core, Fusion Studio and Resonance Atlas;
    Prompt Studio is a workspace. Dark, restrained, scientific. Respect reduced motion.
 8. **Text.** User-facing text is in Finnish; code, identifiers, docs and generation prompts are in English.
-9. Unfinished modules are truthful previews (`components/ModulePreview.tsx`) with no dead controls.
+9. **Schema changes need an Alembic revision** (autogenerate, review, test). Never use `create_all` for upgrades.
+10. **Paid actions** go through the `GenerationJob` preview → confirm flow (exact request, disclosure, cost consent, cap).
+11. Unfinished modules are truthful previews (`components/ModulePreview.tsx`) with no dead controls.
 
 See `docs/CLAUDE_WORKFLOW.md` for task recipes and the definition of done.

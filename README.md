@@ -17,7 +17,7 @@ It is not a recommender or a genre classifier. It keeps five kinds of knowledge 
 | **SonicDNA** — audio analysis, experiences, personal profile | ✅ Working (Phase 1–2) |
 | **Resonance Core** — evidence-based learning and insights | ✅ Working (transparent statistics) |
 | **Prompt Studio** — Suno prompt packages + feedback loop | ✅ Working (manual Suno workflow) |
-| Suno MCP / ElevenLabs integration | ⏳ Not connected (see [providers](docs/PROVIDER_INTEGRATIONS.md)) |
+| **Provider integrations** — Suno MCP via Claude Code, ElevenLabs API | ✅ Working (Phase 3). ElevenLabs is wire-tested, not yet run against the live API; see [providers](docs/PROVIDER_INTEGRATIONS.md) |
 | VisualDNA · Fusion Studio · Resonance Atlas | ⏳ Truthful previews only (Phases 4–6) |
 
 The user interface is in Finnish; code and documentation are in English.
@@ -52,7 +52,12 @@ The user interface is in Finnish; code and documentation are in English.
 7. **Close the loop.** Import the song you made in Suno and link it to its prompt. It is re-analysed and
    compared with the prompt's targets (*objective alignment*), and you rate it separately (*subjective
    resonance*). It then becomes part of your profile.
-8. **Own your data.** Everything is local (SQLite + files). You can export everything as JSON, the profile
+8. **Generate through providers (optional).** Use *Claude Code + Suno MCP* (hand-off brief,
+   `/suno-generate` slash command, `scripts/rx` import CLI), or *ElevenLabs Music*, which uses the server-side
+   API key, shows the exact request and disclosure, offers a free plan step and an explicit cost consent,
+   and imports the result automatically as an experiment. Nothing is ever sent or charged without your
+   confirmation.
+9. **Own your data.** Everything is local (SQLite + files). You can export everything as JSON, the profile
    as JSON, or ratings and features as CSV.
 
 No feature is mocked. Without data, the app says so instead of inventing a profile.
@@ -80,6 +85,9 @@ Tests:
 ./scripts/test.sh       # backend tests (synthetic signals + full API workflow) + typecheck/build
 ./scripts/e2e.sh        # real browser end-to-end workflow (Playwright/Chromium)
 ```
+
+Optional ElevenLabs: set `ELEVENLABS_API_KEY` in `.env` (see `.env.example`) and restart.
+Local CLI for Claude Code workflows: `./scripts/rx --help`.
 
 ### First use
 

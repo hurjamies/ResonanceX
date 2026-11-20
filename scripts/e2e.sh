@@ -27,10 +27,15 @@ PY
 
 [ -d "$ROOT/apps/web/dist" ] || (cd "$ROOT/apps/web" && npm run build)
 
+FAKE_PORT="${FAKE_PORT:-8766}"
+echo "→ starting TEST-ONLY ElevenLabs stand-in on :$FAKE_PORT"
+(cd "$ROOT/services/api" && exec .venv/bin/python -m tests.fake_elevenlabs --port "$FAKE_PORT" --key e2e-test-key >"$WORK/fake.log" 2>&1) &
+FAKE=$!
+
 echo "→ starting API on :$PORT (data: $WORK/data)"
-(cd "$ROOT/services/api" && RESONANCEX_DATA_DIR="$WORK/data" exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "$PORT" >"$WORK/server.log" 2>&1) &
+(cd "$ROOT/services/api" && ELEVENLABS_API_KEY=e2e-test-key RESONANCEX_ELEVENLABS_BASE_URL="http://127.0.0.1:$FAKE_PORT" RESONANCEX_DATA_DIR="$WORK/data" exec .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "$PORT" >"$WORK/server.log" 2>&1) &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true' EXIT
+trap 'kill $SERVER $FAKE 2>/dev/null || true' EXIT
 for _ in $(seq 1 60); do curl -sf "http://127.0.0.1:$PORT/api/health" >/dev/null && break; sleep 0.5; done
 
 BASE_URL="http://127.0.0.1:$PORT" AUDIO_DIR="$WORK/audio" SHOT_DIR="$SHOT_DIR" node "$ROOT/e2e/workflow.e2e.mjs"

@@ -9,6 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -30,6 +31,19 @@ class Settings(BaseSettings):
     serve_frontend: bool = True
     # Run analysis jobs inline (used by tests).
     synchronous_jobs: bool = False
+
+    # --- Provider integrations (Phase 3) -------------------------------------
+    # Secrets are read from the server environment only and never sent to the browser.
+    elevenlabs_api_key: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("RESONANCEX_ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY")
+    )
+    elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    # Pay-as-you-go API price used for estimates (USD per generated minute).
+    # Source: elevenlabs.io/pricing/api at build time – verify on the live pricing page.
+    elevenlabs_usd_per_minute: float = 0.15
+    # Hard per-request ceiling: generation requests estimated above this are refused.
+    max_generation_usd: float = 3.0
+    generation_timeout_seconds: float = 600.0
 
     @property
     def uploads_dir(self) -> Path:

@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
 import scipy.stats
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.models import SonicProfileSnapshot
@@ -1016,21 +1018,38 @@ def input_hash(ds: Dataset) -> str:
     return hashlib.sha256(json.dumps(parts, default=str).encode()).hexdigest()
 
 
+_profile_lock = threading.Lock()
+
+
 def compute_profile(session: Session, persist: bool = True) -> dict[str, Any]:
-    ds = load_dataset(session)
-    h = input_hash(ds)
-    latest = session.exec(select(SonicProfileSnapshot).order_by(SonicProfileSnapshot.version.desc())).first()
-    if latest is not None and latest.input_hash == h:
-        return latest.data | {"version": latest.version, "snapshot_created_at": latest.created_at.isoformat()}
-    data = ProfileBuilder(ds).build()
-    if not persist or not ds.tracks:
-        return data | {"version": latest.version if latest else 0, "snapshot_created_at": None}
-    version = (latest.version + 1) if latest else 1
-    snap = SonicProfileSnapshot(version=version, input_hash=h, core_version=CORE_VERSION, data=data)
-    session.add(snap)
-    session.commit()
-    session.refresh(snap)
-    return data | {"version": version, "snapshot_created_at": snap.created_at.isoformat()}
+    """Return the current profile, creating a new versioned snapshot when inputs changed.
+
+    Concurrent requests (e.g. several pages polling at once) are serialised so that a
+    given input state produces exactly one snapshot; a constraint race with another
+    process is resolved by re-reading the winner's snapshot.
+    """
+    with _profile_lock:
+        ds = load_dataset(session)
+        h = input_hash(ds)
+        latest = session.exec(select(SonicProfileSnapshot).order_by(SonicProfileSnapshot.version.desc())).first()
+        if latest is not None and latest.input_hash == h:
+            return latest.data | {"version": latest.version, "snapshot_created_at": latest.created_at.isoformat()}
+        data = ProfileBuilder(ds).build()
+        if not persist or not ds.tracks:
+            return data | {"version": latest.version if latest else 0, "snapshot_created_at": None}
+        version = (latest.version + 1) if latest else 1
+        snap = SonicProfileSnapshot(version=version, input_hash=h, core_version=CORE_VERSION, data=data)
+        session.add(snap)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            winner = session.exec(select(SonicProfileSnapshot).where(SonicProfileSnapshot.input_hash == h).order_by(SonicProfileSnapshot.version.desc())).first()
+            if winner is not None:
+                return winner.data | {"version": winner.version, "snapshot_created_at": winner.created_at.isoformat()}
+            return data | {"version": version - 1, "snapshot_created_at": None}
+        session.refresh(snap)
+        return data | {"version": version, "snapshot_created_at": snap.created_at.isoformat()}
 
 
 def similar_tracks(session: Session, asset_id: int, k: int = 5) -> list[dict[str, Any]]:

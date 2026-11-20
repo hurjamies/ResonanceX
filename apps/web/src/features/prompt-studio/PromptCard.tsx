@@ -8,6 +8,7 @@ import { api, qk, useVocabulary } from "@/services/api";
 import { fmtDate, fmtFeature } from "@/services/format";
 import type { EvidenceLevel, PromptRecord, SunoPackage } from "@/types/api";
 import { Uploader } from "@/features/library/Uploader";
+import { ProviderActions } from "./ProviderActions";
 
 const SUPPORT_FI = {
   suno_field: { label: "Suno-kenttä", cls: "text-ok border-ok/30" },
@@ -249,6 +250,7 @@ export function PromptCard({ prompt, onChanged, compareCandidates = [] }: { prom
             <FileUp className="size-3.5" /> Tuo Suno-tulos
           </Button>
         </div>
+        <ProviderActions prompt={prompt} />
         {prompt.generated_assets && prompt.generated_assets.length > 0 && (
           <div className="text-xs text-muted">
             Liitetyt tulokset:{" "}

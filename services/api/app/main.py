@@ -9,9 +9,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.api import assets, experience, prompts, system
+from app.api import assets, experience, integrations, prompts, system
 from app.config import REPO_ROOT, get_settings
 from app.database.session import init_db
+from app.services.integrations import generation
 from app.workers.jobs import runner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -21,9 +22,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 async def lifespan(_: FastAPI):
     get_settings().ensure_dirs()
     init_db()
+    generation.recover_on_startup()
     runner.start()
     yield
     runner.shutdown()
+    generation.shutdown()
 
 
 def create_app() -> FastAPI:
@@ -36,7 +39,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for r in (assets.router, experience.router, prompts.router, system.router):
+    for r in (assets.router, experience.router, prompts.router, integrations.router, system.router):
         app.include_router(r)
 
     @app.exception_handler(ValueError)

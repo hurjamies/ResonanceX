@@ -2,7 +2,7 @@
 
 Each compiler turns a ``PromptSpecification`` into a provider package. The
 specification stays provider-neutral; adding a provider means adding a
-compiler + an entry in ``PROVIDERS``.
+compiler + an adapter in ``app.services.integrations``.
 """
 
 from __future__ import annotations
@@ -147,10 +147,12 @@ def compile_suno(spec: PromptSpecification, seed: str) -> dict[str, Any]:
 
 
 def compile_elevenlabs_plan(spec: PromptSpecification) -> dict[str, Any]:
-    """Experimental ElevenLabs Music composition-plan export.
+    """Legacy ElevenLabs *music_v1* sections-plan export (offline, for reference).
 
-    Not verified against the live API in this version; provided to demonstrate the
-    provider adapter boundary. Field names follow the public composition-plan guide.
+    The shape follows the compose-detailed reference example. music_v1 is deprecated
+    (removal 31 Jan 2027); music_v2/v2.5 use a chunk-based plan. The live adapter
+    (``app.services.integrations.elevenlabs``) therefore never sends this structure:
+    it asks ElevenLabs' free ``/v1/music/plan`` endpoint for a plan and sends that back.
     """
     globals_pos = _dedupe(
         [g.name for g in spec.genre_hypotheses[:2]] + spec.rhythm_direction[:2] + spec.bass_direction[:1] + spec.harmonic_direction[:2] + spec.texture_direction[:2]
@@ -170,34 +172,5 @@ def compile_elevenlabs_plan(spec: PromptSpecification) -> dict[str, Any]:
         "positive_global_styles": globals_pos + ([] if spec.vocal_direction != "instrumental" else ["instrumental"]),
         "negative_global_styles": _dedupe(spec.negative_constraints)[:8],
         "sections": sections,
-        "_status": "experimental-unverified",
+        "_status": "legacy-music_v1-offline-export",
     }
-
-
-PROVIDERS: dict[str, dict[str, Any]] = {
-    "suno": {
-        "id": "suno",
-        "name": "Suno",
-        "status": "manual",
-        "status_fi": "Käytössä – manuaalinen kopiointi Sunoon",
-        "generation": False,
-        "models": ["v6-mini", "v6", "v6-wild"],
-        "notes_fi": "Kehotteet kopioidaan Sunon Custom Mode -kenttiin. Virallinen Suno MCP -palvelin toimii Claude Coden kautta (ks. docs/PROVIDER_INTEGRATIONS.md); sitä ei ole yhdistetty tähän sovellukseen.",
-    },
-    "suno_mcp": {
-        "id": "suno_mcp",
-        "name": "Suno MCP (Claude Code)",
-        "status": "external",
-        "status_fi": "Ei yhdistetty sovellukseen – käytettävissä Claude Coden kautta",
-        "generation": False,
-        "notes_fi": "claude mcp add --transport http suno https://api.suno.com/mcp, sitten /mcp-todennus Claude Codessa. Sovellus ei käytä Claude Coden yhteyttä automaattisesti.",
-    },
-    "elevenlabs": {
-        "id": "elevenlabs",
-        "name": "ElevenLabs Music",
-        "status": "not_implemented",
-        "status_fi": "Ei toteutettu – vain kokeellinen composition plan -vienti",
-        "generation": False,
-        "notes_fi": "Generointia ei ole toteutettu. Kokeellinen composition plan -JSON voidaan viedä, mutta sitä ei ole varmennettu API:a vasten.",
-    },
-}

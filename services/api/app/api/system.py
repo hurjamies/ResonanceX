@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.database.session import get_session
 from app.models import (
     AnalysisJob,
+    GenerationJob,
     AudioAnalysis,
     CreativeExperiment,
     ExperienceMarker,
@@ -35,7 +36,6 @@ from app.schemas.vocabulary import (
 )
 from app.services.audio_analysis.engine import ALGORITHM_VERSION, STAGES
 from app.services.ingestion.audio_io import ALLOWED_EXTENSIONS, ffmpeg_available
-from app.services.prompt_engine.compilers import PROVIDERS
 from app.services.resonance_core.core import CORE_VERSION, EVIDENCE_FI, compute_profile
 
 router = APIRouter(prefix="/api", tags=["system"])
@@ -125,11 +125,6 @@ def overview(session: Session = Depends(get_session)) -> dict[str, Any]:
     }
 
 
-@router.get("/providers")
-def providers() -> list[dict[str, Any]]:
-    return list(PROVIDERS.values())
-
-
 @router.get("/settings")
 def settings_info(session: Session = Depends(get_session)) -> dict[str, Any]:
     s = get_settings()
@@ -148,7 +143,10 @@ def settings_info(session: Session = Depends(get_session)) -> dict[str, Any]:
         "core_version": CORE_VERSION,
         "ffmpeg": ffmpeg_available(),
         "bind_host": s.host,
-        "external_requests": [],
+        "external_requests": [
+            "ElevenLabs (api.elevenlabs.io) – vain kun vahvistat generoinnin tai suunnitelman luonnin",
+        ] if s.elevenlabs_api_key else [],
+        "max_generation_usd": s.max_generation_usd,
         "llm": {"configured": False, "status_fi": "Ei käytössä. Kaikki analyysit ja kehotteet tuotetaan paikallisesti ilman kielimallia."},
     }
 
@@ -180,6 +178,7 @@ def _all_data(session: Session) -> dict[str, Any]:
         "pairwise_comparisons": rows(PairwiseComparison),
         "generated_prompts": rows(GeneratedPrompt),
         "creative_experiments": rows(CreativeExperiment),
+        "generation_jobs": rows(GenerationJob),
         "analysis_jobs": rows(AnalysisJob),
         "sonic_dna_profile": compute_profile(session),
     }

@@ -180,6 +180,41 @@ await page.getByText("Viimeisimmät havainnot").waitFor();
 await shot(page, "07-overview");
 step(`profile v${prof.version} includes the generated track's feedback`);
 
+// 9. Phase 3 – provider integrations
+await page.goto(BASE + "/prompt-studio");
+await page.getByRole("tab", { name: /^Historia/ }).click();
+const card = page.locator("article").first();
+await card.getByRole("button", { name: "Claude Code + Suno MCP" }).click();
+await page.locator("dialog[open]").getByText(/\/suno-generate \d+/).first().waitFor();
+await page.locator("dialog[open]").getByText("Do not guess tool names", { exact: false }).waitFor();
+await page.keyboard.press("Escape");
+step("Claude Code + Suno MCP hand-off brief shown");
+await card.getByRole("button", { name: /ElevenLabs/ }).click();
+const dlg = page.locator("dialog[open]");
+await dlg.getByLabel("Kesto (s)").fill("30");
+await dlg.getByRole("button", { name: "Valmistele pyyntö" }).click();
+await dlg.getByText("Mitä lähtee koneeltasi").waitFor();
+const genBtn = dlg.getByRole("button", { name: "Generoi ElevenLabsilla" });
+if (!(await genBtn.isDisabled())) throw new Error("generation must require explicit consent");
+await dlg.getByText("Ymmärrän, mitä tietoja lähetetään").click();
+await dlg.getByRole("button", { name: "Luo maksuton sävellyssuunnitelma" }).click();
+await dlg.getByText("ElevenLabsin luoma sävellyssuunnitelma").waitFor();
+if (!(await genBtn.isDisabled())) throw new Error("cost must be accepted separately");
+await dlg.getByText(/Hyväksyn arvioidun kustannuksen/).click();
+await genBtn.click();
+await dlg.getByText("Kappale tuotiin ja liitettiin kehotteeseen.").waitFor({ timeout: 60_000 });
+await shot(page, "09-elevenlabs-dialog");
+await page.keyboard.press("Escape");
+const gens = await api("/api/generations");
+if (gens[0].status !== "completed" || gens[0].request.mode !== "plan") throw new Error("generation did not complete via plan");
+await page.goto(BASE + "/experiments");
+await page.getByText(/Generoinnit \(1\)/).waitFor();
+await page.waitForFunction(() => document.body.innerText.match(/1 · Tekninen vastaavuus/g)?.length >= 2, null, { timeout: 120_000 });
+await page.goto(BASE + "/settings");
+await page.getByText("Varmennettu").waitFor();
+await shot(page, "10-settings-providers");
+step("ElevenLabs flow: prepare → disclosure → free plan → cost consent → generate → imported as experiment (TEST stand-in)");
+
 // 9. Mobile
 const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
 const mp = await m.newPage();

@@ -13,7 +13,9 @@ FastAPI ─┬─ api/            routers: assets · experience · prompts/exper
          │   ├─ ingestion/       validation, SHA-256 dedup, ffprobe metadata, safe storage
          │   ├─ audio_analysis/  SonicDNA engine (FFmpeg decode → librosa/scipy/pyloudnorm)
          │   ├─ resonance_core/  dataset loading, statistics, profile builder, similarity
-         │   └─ prompt_engine/   PromptSpecification → provider compilers; experiment alignment
+         │   ├─ prompt_engine/   PromptSpecification → provider compilers; experiment alignment
+         │   └─ integrations/    provider adapters (Suno manual, Suno MCP hand-off, ElevenLabs API),
+         │                       registry with computed status, user-confirmed generation jobs
          ├─ workers/jobs.py  persistent job table + ThreadPoolExecutor (re-queues on restart)
          └─ SQLite (SQLModel)   + data/uploads (originals) + data/analysis (time series, PNG)
 ```
@@ -27,7 +29,7 @@ FastAPI ─┬─ api/            routers: assets · experience · prompts/exper
 | Experience modelling | `api/experience.py`, `models` | `ExperienceRating` (+ immutable `FeedbackSession` history), `ExperienceMarker`, `PairwiseComparison` |
 | Resonance Core | `services/resonance_core` | versioned `SonicProfileSnapshot.data` (insights, targets, associations, hypotheses, field) |
 | Prompt Engine | `services/prompt_engine` | `PromptSpecification` (provider-neutral) → `compile_suno()` / `compile_elevenlabs_plan()` |
-| Provider integration | `prompt_engine/compilers.PROVIDERS` | status registry; no network calls in this version |
+| Provider integration | `services/integrations` | `ProviderAdapter` (`prepare` → `generate`), `GenerationJob` state machine; outbound calls only after confirmation |
 | Presentation | `apps/web/src/features/*` | typed API client (`services/api.ts`, `types/api.ts`) |
 
 ## Key decisions
@@ -63,14 +65,21 @@ FastAPI ─┬─ api/            routers: assets · experience · prompts/exper
 
 `MediaAsset` · `AnalysisJob` · `AudioAnalysis` · `ExperienceRating` · `FeedbackSession` ·
 `ExperienceMarker` · `PairwiseComparison` · `SonicProfileSnapshot` · `GeneratedPrompt` ·
-`CreativeExperiment`. The spec's `PromptSpecification` lives inside `GeneratedPrompt.specification`,
+`CreativeExperiment` · `GenerationJob`. `MediaAsset.source_provider` records the provenance of generated media. The spec's `PromptSpecification` lives inside `GeneratedPrompt.specification`,
 and user edits are stored in `GeneratedPrompt.edited` without overwriting `compiled`.
 
 Entities for later phases (`VisualAnalysis`, `FusionProject`, `ProviderConfiguration`, …) are deliberately
 **not** created yet. `MediaAsset.kind` already distinguishes audio, image and video.
 
-`SQLModel.metadata.create_all` creates the schema. Before the first schema change that has to
-migrate existing user data, introduce Alembic (see roadmap).
+**Migrations (Alembic).** On startup `app/database/migrate.py` upgrades the schema to head. Databases
+created by Phase 1–2 (`create_all`, no `alembic_version`) are first stamped at `0001_baseline`, so existing
+data is never dropped (covered by a test). New schema change: edit the models, then run
+`.venv/bin/alembic revision --autogenerate -m "…"` in `services/api` (SQLite batch mode is enabled), review
+it, and add a test. Revisions so far: `0001_baseline` (Phase 2 schema) and `0002_generation`
+(`generation_job`, `media_asset.source_provider`).
+
+**Concurrency.** Profile snapshot creation is serialised (in-process lock plus recovery from
+unique-constraint races), so parallel requests produce exactly one snapshot per input state.
 
 ## API overview
 
@@ -81,6 +90,7 @@ migrate existing user data, introduce Alembic (see roadmap).
 | Core | `GET /api/profile`, `GET /api/profile/history`, `GET /api/overview`, `GET /api/vocabulary` |
 | Prompts | `GET /api/prompt-options`, `POST /api/prompts/generate`, `GET /api/prompts`, `GET/PATCH/DELETE /api/prompts/{id}`, `POST …/duplicate`, `GET …/export?format=json|text`, `GET …/elevenlabs-plan` |
 | Experiments | `GET /api/experiments`, `GET/PATCH /api/experiments/{id}` |
+| Providers | `GET /api/providers` (computed status), `GET /api/prompts/{id}/handoff`, `POST /api/generations` (prepare only), `GET /api/generations[?prompt_id]`, `GET /api/generations/{id}`, `POST …/plan` (explicit, free), `POST …/confirm` (`accepted_cost`, `accept_disclosure`), `POST …/cancel` |
 | System | `GET /api/health`, `/api/settings`, `/api/providers`, `/api/export/all.json`, `/api/export/profile.json`, `/api/export/ratings.csv` |
 
 Interactive OpenAPI docs: `http://127.0.0.1:8000/docs`.
@@ -94,4 +104,9 @@ Interactive OpenAPI docs: `http://127.0.0.1:8000/docs`.
   duplicates, failure isolation and persistence across an app restart.
 * `services/api/tests/test_prompt_engine.py` covers translation rules, compiler concision and dedup, and the
   stats helpers.
-* `e2e/workflow.e2e.mjs` drives the real UI in Chromium, including a mobile viewport overflow check.
+* `services/api/tests/test_integrations.py` covers provider status, preview-without-sending, confirmation and
+  cost guards, exact ElevenLabs wire format against a local stand-in (`tests/fake_elevenlabs.py`), plan
+  pass-through, error mapping, restart recovery, provenance validation, the hand-off brief, legacy-database
+  adoption, a CLI import against a live local server, and the concurrent-profile regression.
+* `e2e/workflow.e2e.mjs` drives the real UI in Chromium. It includes the Suno MCP hand-off, the full ElevenLabs
+  consent flow (against the test stand-in started by `scripts/e2e.sh`) and a mobile viewport overflow check.

@@ -63,7 +63,7 @@ def test_elevenlabs_plan_shape():
     plan = compile_elevenlabs_plan(_spec())
     assert plan["sections"][0]["section_name"] == "Intro" and plan["sections"][0]["duration_ms"] == 20000
     assert "instrumental" in plan["positive_global_styles"]
-    assert plan["_status"] == "experimental-unverified"
+    assert plan["_status"] == "legacy-music_v1-offline-export"
 
 
 def test_no_uninformative_phrases():
