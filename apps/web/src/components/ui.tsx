@@ -245,6 +245,12 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     <dialog
       ref={ref}
       onClose={onClose}
+      // Escape: close through React state. Some Chromium builds close the dialog on
+      // "cancel" without a following "close" event, leaving `open` stuck at true.
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
       onClick={(e) => e.target === ref.current && onClose()}
       className={clsx("m-auto w-[calc(100%-2rem)] rounded-2xl border border-line-strong bg-midnight p-0 text-ink backdrop:bg-black/60 backdrop:backdrop-blur-sm", wide ? "max-w-4xl" : "max-w-lg")}
     >

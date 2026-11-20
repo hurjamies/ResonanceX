@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { AlertTriangle, ArrowRight, Folder, Library, Pause, Play, Plus, RotateCw, Search, Sparkles, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, ArrowRight, Folder, Library, Pause, Pencil, Play, Plus, RotateCw, Search, Sparkles, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +7,7 @@ import { Button, Empty, ErrorNote, Modal, PageHeader, Panel, Spinner, Tabs } fro
 import { api, qk, useAssets, useInvalidateDerived, useMusicFolders } from "@/services/api";
 import { fmtTime, STAGE_FI } from "@/services/format";
 import { usePlayer } from "@/stores/player";
-import type { Asset, UploadResult } from "@/types/api";
+import type { Asset, MusicFolder, UploadResult } from "@/types/api";
 import { UploadResults, Uploader } from "./Uploader";
 import { ForYouCard } from "./ForYouCard";
 
@@ -64,21 +64,36 @@ export default function LibraryPage() {
   const folderParam = params.get("folder");
   const selectedFolderId = folderParam && /^\d+$/.test(folderParam) ? Number(folderParam) : null;
   const selectedFolder = folders.data?.find((f) => f.id === selectedFolderId);
-  const [folderFormOpen, setFolderFormOpen] = useState(false);
+  // null = closed; no folder = create; folder = rename
+  const [folderForm, setFolderForm] = useState<{ folder?: MusicFolder } | null>(null);
   const [folderName, setFolderName] = useState("");
+  const [confirmFolderDel, setConfirmFolderDel] = useState<MusicFolder | null>(null);
   const [filter, setFilter] = useState<"all" | "library" | "generated" | "unrated">("all");
   const [q, setQ] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Asset | null>(null);
   const [lastResults, setLastResults] = useState<UploadResult[] | null>(null);
 
-  const createFolder = useMutation({
-    mutationFn: api.createMusicFolder,
+  const saveFolder = useMutation({
+    mutationFn: ({ id, name }: { id?: number; name: string }) => (id ? api.renameMusicFolder(id, name) : api.createMusicFolder(name)),
     onSuccess: (f) => {
-      qc.invalidateQueries({ queryKey: qk.musicFolders });
-      setFolderFormOpen(false);
+      inv();
+      setFolderForm(null);
       setFolderName("");
       setParams({ folder: String(f.id) });
+    },
+  });
+  const openFolderForm = (folder?: MusicFolder) => {
+    saveFolder.reset();
+    setFolderName(folder?.name ?? "");
+    setFolderForm({ folder });
+  };
+  const deleteFolder = useMutation({
+    mutationFn: (id: number) => api.deleteMusicFolder(id),
+    onSuccess: (r) => {
+      inv();
+      if (selectedFolderId === r.deleted) setParams({});
+      setConfirmFolderDel(null);
     },
   });
   const assignFolder = useMutation({
@@ -142,14 +157,20 @@ export default function LibraryPage() {
       <section className="mb-7" aria-label="Tyylilokerot">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Tyylilokerosi</h2>
-          <Button size="sm" onClick={() => { createFolder.reset(); setFolderFormOpen(true); }}><Plus className="size-4" /> Uusi lokero</Button>
+          <Button size="sm" onClick={() => openFolderForm()}><Plus className="size-4" /> Uusi lokero</Button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {folders.data?.map((f) => <article key={f.id} className={clsx("flex min-w-0 flex-col rounded-xl border bg-midnight p-5", selectedFolderId === f.id ? "border-violet" : "border-line-strong")}>
-            <button type="button" aria-pressed={selectedFolderId === f.id} onClick={() => { setParams({ folder: String(f.id) }); setFilter("all"); setQ(""); }} className="flex min-w-0 items-center gap-3 text-left">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-violet-soft"><Folder className="size-5" /></span>
-              <span className="min-w-0"><span className="block break-words text-lg font-medium">{f.name}</span><span className="text-sm text-muted">{f.track_count} kappaletta</span></span>
-            </button>
+            <div className="flex min-w-0 items-start gap-2">
+              <button type="button" aria-pressed={selectedFolderId === f.id} onClick={() => { setParams({ folder: String(f.id) }); setFilter("all"); setQ(""); }} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface text-violet-soft"><Folder className="size-5" /></span>
+                <span className="min-w-0"><span className="block break-words text-lg font-medium">{f.name}</span><span className="text-sm text-muted">{f.track_count} kappaletta</span></span>
+              </button>
+              <div className="flex shrink-0 gap-1">
+                <button type="button" onClick={() => openFolderForm(f)} title="Nimeä uudelleen" aria-label={`Nimeä lokero ${f.name} uudelleen`} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-surface hover:text-ink"><Pencil className="size-4" /></button>
+                <button type="button" onClick={() => { deleteFolder.reset(); setConfirmFolderDel(f); }} title="Poista lokero" aria-label={`Poista lokero ${f.name}`} className="grid size-8 place-items-center rounded-lg text-muted hover:bg-danger/10 hover:text-danger"><Trash2 className="size-4" /></button>
+              </div>
+            </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <Button size="sm" variant="primary" disabled={!f.ready_count || generate.isPending} loading={generate.isPending && generate.variables === f.id} onClick={() => generate.mutate(f.id)}>Luo Suno-kehote <ArrowRight className="size-3.5" /></Button>
               <Button size="sm" variant="ghost" onClick={() => { setParams({ folder: String(f.id) }); setUploadOpen(true); }}><Plus className="size-3.5" /> Lisää musiikkia</Button>
@@ -253,13 +274,31 @@ export default function LibraryPage() {
       <Modal open={uploadOpen} onClose={() => setUploadOpen(false)} title="Tuo musiikkia">
         <Uploader key={selectedFolderId ?? "all"} folderId={selectedFolderId ?? undefined} onDone={setLastResults} />
       </Modal>
-      <Modal open={folderFormOpen} onClose={() => setFolderFormOpen(false)} title="Uusi tyylilokero">
-        <form onSubmit={(e) => { e.preventDefault(); if (folderName.trim()) createFolder.mutate(folderName.trim()); }} className="flex flex-col gap-4">
+      <Modal open={!!folderForm} onClose={() => setFolderForm(null)} title={folderForm?.folder ? "Nimeä lokero uudelleen" : "Uusi tyylilokero"}>
+        <form onSubmit={(e) => { e.preventDefault(); if (folderName.trim()) saveFolder.mutate({ id: folderForm?.folder?.id, name: folderName.trim() }); }} className="flex flex-col gap-4">
           <label className="flex flex-col gap-2 text-sm">Tyylilajin nimi<input autoFocus maxLength={60} required value={folderName} onChange={(e) => setFolderName(e.target.value)} placeholder="Esim. jazz, folk tai progressiivinen metalli" className="h-11 w-full rounded-lg border border-line-strong bg-obsidian px-3" /></label>
-          <p className="text-sm text-muted">Nimeä lokero tyylilajin mukaan. Sama tyyli ohjaa siitä luotavia Suno-kehotteita.</p>
-          <Button type="submit" variant="primary" loading={createFolder.isPending} disabled={!folderName.trim()}>Luo lokero</Button>
-          <ErrorNote error={createFolder.error} />
+          <p className="text-sm text-muted">
+            {folderForm?.folder
+              ? "Uusi nimi ohjaa lokerosta tästä eteenpäin luotavia Suno-kehotteita. Jo tallennetut kehotteet eivät muutu."
+              : "Nimeä lokero tyylilajin mukaan. Sama tyyli ohjaa siitä luotavia Suno-kehotteita."}
+          </p>
+          <Button type="submit" variant="primary" loading={saveFolder.isPending} disabled={!folderName.trim()}>{folderForm?.folder ? "Tallenna nimi" : "Luo lokero"}</Button>
+          <ErrorNote error={saveFolder.error} />
         </form>
+      </Modal>
+      <Modal open={!!confirmFolderDel} onClose={() => setConfirmFolderDel(null)} title="Poista lokero">
+        <p className="text-sm text-muted">
+          Poistetaanko lokero <span className="text-ink">{confirmFolderDel?.name}</span>?{" "}
+          {confirmFolderDel?.track_count
+            ? `Sen ${confirmFolderDel.track_count} kappaletta säilyvät kirjastossa ja siirtyvät kohtaan Ilman lokeroa.`
+            : "Lokero on tyhjä."}{" "}
+          Kappaleita, arvioita tai tallennettuja kehotteita ei poisteta.
+        </p>
+        <ErrorNote error={deleteFolder.error} />
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setConfirmFolderDel(null)}>Peruuta</Button>
+          <Button variant="danger" loading={deleteFolder.isPending} onClick={() => confirmFolderDel && deleteFolder.mutate(confirmFolderDel.id)}>Poista lokero</Button>
+        </div>
       </Modal>
       <Modal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Poista kappale">
         <p className="text-sm text-muted">

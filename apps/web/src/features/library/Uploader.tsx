@@ -10,7 +10,9 @@ export function Uploader({ promptId, folderId, compact, onDone }: { promptId?: n
   const vocab = useVocabulary();
   const upload = useUpload();
   const folders = useMusicFolders();
-  const [selectedFolder, setSelectedFolder] = useState(folderId ? String(folderId) : "");
+  const [chosenFolder, setSelectedFolder] = useState(folderId ? String(folderId) : "");
+  // A preselected folder may have been deleted since (e.g. an older prompt's folder).
+  const selectedFolder = folders.data?.some((f) => String(f.id) === chosenFolder) ? chosenFolder : "";
   const [files, setFiles] = useState<File[]>([]);
   const [rights, setRights] = useState(false);
   const [drag, setDrag] = useState(false);

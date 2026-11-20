@@ -175,3 +175,30 @@ def test_platform_categories_never_become_suno_styles(client):
         text = " ".join(str(p["compiled"].get(k) or "") for k in ("style", "primary_genre", "hybrid_genre")).casefold()
         assert "politics" not in text and "music with" not in text, p["compiled"]["style"]
         assert all(h["name"].casefold() not in {"music", "news & politics"} for h in p["specification"]["genre_hypotheses"])
+
+
+def test_folders_can_be_renamed_and_deleted_without_losing_tracks(client):
+    track = seed_track("Kept song", folder_id=1, preference=9, bpm=140)
+    renamed = client.patch("/api/music/folders/1", json={"name": "  Elektroninen  "})
+    assert renamed.status_code == 409  # name taken by another folder
+    renamed = client.patch("/api/music/folders/1", json={"name": "Raskas  metalli"})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "Raskas metalli" and renamed.json()["track_count"] == 1
+    assert client.patch("/api/music/folders/1", json={"name": "metalli"}).json()["genre"] == "metal"
+    assert client.patch("/api/music/folders/1", json={"name": "METALLI"}).status_code == 200  # same folder, new case
+    assert client.patch("/api/music/folders/1", json={"name": " "}).status_code == 422
+    assert client.patch("/api/music/folders/999", json={"name": "x"}).status_code == 404
+    old_prompt = client.post("/api/music/folders/1/prompt").json()["prompt"]
+    client.patch("/api/music/folders/1", json={"name": "Doom"})
+    assert client.post("/api/music/folders/1/prompt").json()["prompt"]["compiled"]["primary_genre"] == "Doom"
+
+    deleted = client.delete("/api/music/folders/1")
+    assert deleted.status_code == 200 and deleted.json() == {"deleted": 1, "unfiled_tracks": 1}
+    assert client.delete("/api/music/folders/1").status_code == 404
+    assert [f["id"] for f in client.get("/api/music/folders").json()] == [2, 3]
+    asset = client.get(f"/api/assets/{track}").json()
+    assert asset["folder_id"] is None and asset["rated"]
+    # Saved prompts are history: unchanged, and still readable.
+    assert client.get(f"/api/prompts/{old_prompt['id']}").json()["compiled"]["primary_genre"] == "metal"
+    # The name is free again.
+    assert client.post("/api/music/folders", json={"name": "Metalli"}).status_code == 201

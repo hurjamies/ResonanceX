@@ -49,11 +49,16 @@ def list_folders(session: Session = Depends(get_session)) -> list[dict[str, Any]
     ]
 
 
-@router.post("/folders", status_code=201)
-def create_folder(body: FolderIn, session: Session = Depends(get_session)) -> dict[str, Any]:
-    key = body.name.casefold()
-    translations = {"metalli": "metal", "metallimusiikki": "metal", "elektroninen": "electronic", "elektroninen musiikki": "electronic"}
-    folder = MusicFolder(name=body.name, name_key=key, genre=translations.get(key, body.name))
+GENRE_TRANSLATIONS = {"metalli": "metal", "metallimusiikki": "metal", "elektroninen": "electronic", "elektroninen musiikki": "electronic"}
+
+
+def _apply_name(folder: MusicFolder, name: str) -> None:
+    """Set the display name and the (English) genre used in Suno prompts."""
+    key = name.casefold()
+    folder.name, folder.name_key, folder.genre = name, key, GENRE_TRANSLATIONS.get(key, name)
+
+
+def _save_folder(session: Session, folder: MusicFolder) -> None:
     session.add(folder)
     try:
         session.commit()
@@ -61,7 +66,40 @@ def create_folder(body: FolderIn, session: Session = Depends(get_session)) -> di
         session.rollback()
         raise HTTPException(409, "Tämän niminen lokero on jo olemassa.") from exc
     session.refresh(folder)
+
+
+def _folder_counts(session: Session, folder_id: int) -> dict[str, Any]:
+    return next(f for f in list_folders(session) if f["id"] == folder_id)
+
+
+@router.post("/folders", status_code=201)
+def create_folder(body: FolderIn, session: Session = Depends(get_session)) -> dict[str, Any]:
+    folder = MusicFolder(name="", name_key="", genre="")
+    _apply_name(folder, body.name)
+    _save_folder(session, folder)
     return {"id": folder.id, "name": folder.name, "genre": folder.genre, "track_count": 0, "ready_count": 0, "pending_count": 0}
+
+
+@router.patch("/folders/{folder_id}")
+def rename_folder(folder_id: int, body: FolderIn, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Rename a folder. Its genre steers future prompts only; saved prompts keep their text."""
+    folder = folder_or_404(session, folder_id)
+    _apply_name(folder, body.name)
+    _save_folder(session, folder)
+    return _folder_counts(session, folder_id)
+
+
+@router.delete("/folders/{folder_id}")
+def delete_folder(folder_id: int, session: Session = Depends(get_session)) -> dict[str, Any]:
+    """Delete a folder. Its tracks are kept and become unfiled; saved prompts are unchanged."""
+    folder = folder_or_404(session, folder_id)
+    entries = session.exec(select(MusicFolderEntry).where(MusicFolderEntry.folder_id == folder_id)).all()
+    for entry in entries:
+        session.delete(entry)
+    session.flush()
+    session.delete(folder)
+    session.commit()
+    return {"deleted": folder_id, "unfiled_tracks": len(entries)}
 
 
 def _create_prompt(session: Session, sources: list[TrackRecord], genres: list[str], evidence: list[str], label: str, context: dict[str, Any], genre_directions: list[dict[str, str]] | None = None) -> dict[str, Any]:
