@@ -5,7 +5,7 @@ argument-hint: <prompt-id>
 
 Create a song in Suno from ResonanceX prompt #$ARGUMENTS and bring the result back into ResonanceX.
 
-1. Check that the ResonanceX app is running (`./scripts/rx prompts`). If it is not, ask the user to start it with `./scripts/start.sh`.
+1. Check that the ResonanceX app is running (`./scripts/rx prompts`). If it is not, ask the user to start it with `./scripts/start.sh` (Windows: double-click `ResonanceX.bat`).
 2. Fetch the hand-off brief: `./scripts/rx prompt $ARGUMENTS --handoff`. Follow its rules exactly.
 3. Check that the official `suno` MCP server (https://api.suno.com/mcp) is connected and list the tools it actually exposes. If it is missing, tell the user to run
    `claude mcp add --transport http suno https://api.suno.com/mcp` and authenticate with `/mcp`, then stop. Never guess tool names.
